@@ -1,0 +1,6 @@
+{
+  "feature_names_to_exclude": [
+    "Name"
+  ],
+  "submit_true_false": true
+}

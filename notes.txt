@@ -1,0 +1,764 @@
+############################## Common Commands
+# To kill app.py on 8080:
+#   lsof -nP -iTCP:8080 | grep LISTEN    (will show the PID in the second column)
+#     kill PID
+#     kill -9 PID
+#
+# caffeinate python test.py
+# pkill -f python3.11
+# pkill -9 -f python3.11
+# kill PID
+# kill -9 PID
+# grep -r "text2" .     (find string in all sub-dirs)  "-C 2" show surrounding 2 lines above/below
+# To find "metric" in all option.json files.
+    grep -R --include="options.json" -n "metric" .
+# To search for files from the current directory downward:
+    find . -name "requirements-py312.txt"
+# To delete files from the current directory downward:
+    find . -type f -name "0.json" -ls # dry run
+    find . -type f -name "0.json" -delete # actual delete
+# To find all files greater than 2 MB
+    find . -type f -size +2M -print0 | xargs -0 ls -lhS
+    find . -type f -name "*.csv" -size +2M -print0 | xargs -0 ls -lhS
+# To display memory requirements:
+    /usr/bin/time -l python test.py
+# To remove local source control changes:
+    Go to VS Code source control on left: Changes...Changes>Discard All Changes
+# To pull all adds and changes from github:
+    Go to VS Code source control on left: Changes...Pull
+# To remove the existing directory tests/customer_churn from github:
+    git rm -r --cached tests/customer_churn
+    git commit -m "Remove directory from repository"
+    git push
+    Then add "tests/customer_churn" to .gitignore
+# If finding a variable in vscode does not work:
+    Cmd > Shift > p
+    Reload Window
+
+# To backup/copy all files recursively
+#   ~/MyStuff/Projects/junkdeleted
+        find ../predictly             -maxdepth 1 -type f -exec cp -p {} . \;
+        mkdir -p tabular
+        find ../predictly/tabular     -maxdepth 1 -type f -exec cp -a {} tabular/ \;
+        mkdir -p ui-frontend
+        find ../predictly/ui-frontend -maxdepth 1 -type f -exec cp -a {} ui-frontend/ \;
+        cp -a ../predictly/ui-frontend/src ui-frontend/
+
+# To take a screenshot:
+    1. Command + Shift + 4
+       Click and hold  ,  Drag a box around the portion you want  ,  Release the mouse
+    2. Open a Finder window, and then Cmd-Shift-D
+       You should then see your screenshot which you can move and rename.
+
+
+############################# CREATING A VENV TO RUN THIS PROJECT ON YOUR MAC #####################
+# cd ~/MyStuff/Projects/predictly
+# pyenv versions # will list installed python versions
+# rm -rf .venv # delete any existing venv
+# ~/.pyenv/versions/3.11.9/bin/python -m venv .venv     # Create the venv using Python (3.11.9)
+# ls .venv
+# source .venv/bin/activate  # Activate the venv, your prompt should change to start with (.venv)
+# python --version  # Python 3.11.9
+# python -m pip install --upgrade pip   # upgrades pip inside .venv, not system-wide.
+# pip --version
+# pip install -r requirements.txt   # install dependencies
+# pip list
+# XXXX NO python -m pip install --upgrade build  # Needed for building the package for upload to pypi, but not needed for running the code.
+# XXXX NO python -m pip install --upgrade twine # Needed for uploading the package to pypi, but not needed for running the code.
+# deactivate # will get you out of the venv
+
+# Now in vscode you need to do this command in the integrated terminal
+# source .venv/bin/activate
+
+
+
+################################################### To Run Predictly
+# To build and deploy to Modal  (DO need to be in .venv):
+        ~/MyStuff/Projects/predictly
+        source .venv/bin/activate  # Activate the venv, your prompt should change to start with (.venv)
+        modal deploy modal_predictly.py
+        modal deploy modal_server.py
+# To start local dev server (do NOT need to be in .venv)
+        ~/MyStuff/Projects/predictly/ui-frontend % npm run dev
+# To update Netlify:
+        Just push UI tsx stuff to github
+
+
+###################################### TODO:
+## -1. python -m cProfile test.py >t.profile.txt
+##     Look for all cast float()
+##     Look for all: ignore, mypy, pyright
+##     vulture ~/MyStuff/Projects/predictly/
+##     cd ~/MyStuff/Projects/predictly
+##          pylint .
+##          mypy --strict --disallow-untyped-defs features.py hyperparams.py tester.py predict.py \
+##              test.py trainers.py utilities.py
+##
+
+##   0. Ask ChatGPT to refactor, clean up, and document code.
+##   0. I think there might be legacy stuff in the code, esp the UI.  Look for "optional".
+
+##   0. Claude: https://www.youtube.com/watch?v=ntDIxaeo3Wg
+        1. Subscribe to "Pro" version
+        2. code.claude.com/dics/en/overview
+        3. Use VSCode, not Cursor
+        4. /init will create a claude.md ("memory" file).
+
+##   0. Decide your first product features and SPEED.  Update the "About" section appropriately.
+##      Eventually need a "Step 0" (Free/Paid).
+##      Then you can adjust the allowed dataset size before they upload.
+##      And what you display in step 4 (only predictions, nothing else.).
+##      From App.tsx, set "speed: 1" insted of "speed: 0" in apiUrl("/ui/train_async").  Have the 0/1 in a variable, not hard-coded.
+##      Allow 10 MB file size uploads for speed == 1 (see MAX_UPLOAD_MB)
+
+##
+##   0. Eventually look at these for ideas:
+        https://www.kdnuggets.com/5-useful-python-scripts-to-automate-data-cleaning
+          1. Missing Value Handler
+          3. Data Type Fixer and Standardizer
+          4. Outlier Detector
+
+        https://www.kdnuggets.com/5-useful-python-scripts-for-busy-data-scientists
+          1. Data Quality Checker
+          3. Dataset Profiler
+
+        https://www.kdnuggets.com/5-useful-python-scripts-for-effective-feature-engineering
+          1. Encoding Categorical Features
+          2. Transforming Numerical Features
+          3. Generating Feature Interactions
+          4. Extracting Datetime Features
+          5. Selecting Features Automatically
+
+##
+##   0. Eventually make your endpoints secure:
+         Create a small backend server
+         (Cloud Run, FastAPI, Flask — anything that runs on a server you control).
+         Change your frontend to call that server
+         Instead of calling Modal, your React app calls your server.
+         Move all secrets to that server
+         Modal keys, tokens, anything sensitive lives only there.
+         Have the server call Modal
+         The server forwards requests to Modal and adds the secret headers.
+         Lock Modal down
+         Turn on requires_proxy_auth=True so Modal rejects public traffic.
+
+##
+##   1. For Modal free (SPEED == 0), I tried both doubling the TIME_FACTOR and increasing the
+##      cpu/ram from 2/4096 to 8/8192.  It did not change anything for heart_disease.  It still
+##      needed 2 overfit passes (75000, 87500).  On the Mac it only needs 1 pass at 75000.
+##
+##   2. Ask ChatGPT:
+##      I am going to give you 5 modules in 5 messages:
+##      features.py, hyperparams.py, predict.py, trainers.py, utilities.py.
+##      After you have received all 5, please audit them for correctness, consistency, and leakage.
+##      Do not worry about micro-optimizations or over-complicating things.
+##      But let me know if you find real "bugs" or "inconsistencies".
+##
+##   3. ChatGPT says:
+##      If you'd like, I can also generate a full project map of your ML system as I understand it:
+##      modules, flows, dependencies, and assumptions — so you can see the architecture that I am
+##      operating from.
+##
+##   4. Eventually think about going from Netlify to Vercel.
+##
+##   5. Maybe do full SHAP later.  But it is VERY computationally expensive, full of gotchas, difficult to explain.
+##
+##
+##  21. I could not find a way to dynamically get the list of _FLAML_CLASSIFICATION_ESTIMATORS, so
+##     I had to hard-code it.  When you get a new version of FLAML, you will need to see if they
+##     have added any new estimators.
+##  22. ChatGPT gave me some code to select between the following numeric scalers:  StandardScaler,
+##      RobustScaler, and PowerTransformer(method="yeo-johnson").  It almost always chose
+##      StandardScaler.  I got better results by just always using RobustScaler. Maybe re-visit
+##      later.
+##  23. This will fix error 500 on git push:
+##      git remote set-url origin https://github.com/JohnDReynolds/predictly.git
+##      git remote -v
+##      Then you should see:
+##        origin  https://github.com/JohnDReynolds/predictly.git (fetch)
+##        origin  https://github.com/JohnDReynolds/predictly.git (push)
+##      git ls-remote origin
+##  24. The "forest_cover" ratio won't go below 1.11 - 1.18, even at levels 13/23.  ChatGPT has
+##      tweaked dynamic_hpo.py.BASE hyperparameters as much as it feels comfortable doing, which
+##      helped a little.  You also added Option.SEED_STRICTNESS which just forces down the ratio
+##      quicker as you progress from levels 10 -> 13 and 20 -> 23, but it still stops at 23.
+##  25. Edge case to be aware of (but probably fine in your use cases):
+##       If multi-class predictions come back as string labels (dtype object, 1D), they’ll fall
+##         into the float path and astype(np.float64, ...) will fail.
+##       In your current trainers, multi-class classification is:
+##       Probabilities (2D) when metric is log_loss / cross_entropy → handled perfectly by the
+##         float branch.
+##       Label indices via LabelEncoder when metric is accuracy-like → dtype will be integer,
+##         handled by the integer branch.
+##       So as long as your targets are numeric / label-encoded (which they are), you’re safe.
+##       I wouldn’t complicate this further unless you actually hit a string-label multi-class
+##       Kaggle competition.
+##  26. High-Value Feature Ideas to Try Later
+#       Log transforms (log1p(x))
+#         Great for strictly positive, heavy-tailed variables (volume, volatility, dollar values).
+#       Ratios (x / y)
+#         Useful when features naturally relate as “speed,” “intensity,” or “relative change.”
+#       Differences (x - y)
+#         Captures spread signals (fast vs. slow averages, value vs. threshold, etc.).
+#       Standardized z-scores ((x - mean)/std)
+#         Can help when a raw feature’s scale changes over time or has rolling structure.
+#       Min–max scaling to range (0,1)
+#         Sometimes helpful for users sensitive to absolute scale (occasionally improves
+#         FLAML/GBMs).
+#       Logistic squashing (1/(1+exp(-x)))
+#         Helps tame extreme outliers and emphasize mid-range signals.
+#       Clipped features (clip(x, lower, upper))
+#         Reduces noise from extreme values while keeping the bulk signal intact.
+#       Binary threshold flags (x > constant, x < constant)
+#         A simple way to embed domain knowledge (e.g., “RSI > 70” = overbought zone).
+#   27. Including heart_disease synthetic functions gave worse results.  I tried to figure out exactly
+#       what was making things worse, feature by feature, but it seems like anything I added made things
+#       slightly worse.  When you start adding custom stuff, you really have to make sure that it's adding value.
+#
+##
+##  81. To clone my Git project (ie Jenna)
+##      1. Install Python 3.11.9
+##      2. See "Downgrading to python 3.11" in _notes.odt
+##      ...
+##      21. Create an empty folder for the project.  Preferred name is "predictly".
+##      22. Sign into Git:
+##         Email: reynolds_johnd@yahoo.com
+##         Psw:   $haXer22293@
+##         Recovery codes: 4627c-82f99 or 7d1c5-b723b or 41b09-ee4c2 or 7c616-32f45
+##      23. Go into VSCode
+##      24. Select the Source Control Icon on the left vertical bar.
+##      25. Click "Clone Repository".
+##      26. In the search bar enter: https://github.com/JohnDReynolds/predictly.git
+##         Note: Do NOT select "Clone from GitHub"
+##      27. cd predictly/ui-frontend
+##          npm install
+##
+##  82. Renaming a github project from "predictly" to "ml-tabular"
+##      a) Go to your repo on GitHub
+##         Click Settings → top of the page → Repository name
+##         Change the name → click Rename
+##         GitHub will:
+##         Keep the old URL working for a long time (HTTP redirects)
+##         Update all internal references
+##         NOT break issues, branches, tags, or GitHub Pages
+##         So renaming on GitHub is safe.
+##      b) Open a terminal inside VS Code and run:
+##         git remote -v
+##         You’ll see something like:
+##         origin  https://github.com/JohnDReynolds/predictly.git (fetch)
+##         origin  https://github.com/JohnDReynolds/predictly.git (push)
+##         Update BOTH URLs with the command:
+##         git remote set-url origin https://github.com/JohnDReynolds/ml_tabular.git
+##         Confirm:
+##         git remote -v
+##         It should now show the new repo name.
+##         Try doing a small "commit and push".
+##
+##
+##
+##. 91. See TENSOR FLOW example and pre_encode_categoricals() example in _archive.py.
+##. 92. ImportError: IterativeImputer is experimental and the API might change without any
+##.     deprecation cycle. To use it, you need to explicitly import enable_iterative_imputer:
+##. 93. For "home-data-for-ml-course" and "house-prices-advanced-regression-techniques":
+##      There are some sale-related features included: MoSold, YrSold, SaleType, SaleCondition
+##      Here is what ChatGPT has to say:  You can include them.  They’re part of the provided
+##      feature set and not derived from “SalePrice” itself.  Just be mindful that in a truly
+##      future-facing model you wouldn’t have sale-completion metadata before the SalePrice is
+##      known, which would be considered leakage.
+##. 94. Maybe look into dropping a single OneHot encoded column to "avoid collinearity".
+##.     See _create_onehot_pipeline(). It is only advantageous for linear clients, and most of the
+##.     time the best model is not linear.
+##. 95. Target leakage occurs when your predictors include data that will not be available at the
+##.     time you make predictions.  For instance if you have a patient feature "took_antibiotics",
+##.     and you are trying to predict if the patient will get pneumonia, then you cannot use that
+##.     feature.  They take antibiotics AFTER they get pneumonia.  To prevent this type of data
+##.     leakage, any variable updated (or created) after the target value is realized should be
+##.     excluded.
+##  96. Maybe try per library (works for Python 3.11 on macOS):
+##      PyCaret (v3.x) — Yes. 3.11 is supported. Use pycaret or pycaret[full] (the latter pulls
+##        many heavy extras).
+##      H2O — Yes. The Python client works on 3.11. You need Java installed (e.g., brew install
+##        openjdk and set JAVA_HOME).
+##      TPOT — Usually works, but the project is quiet and sometimes pins old deps. Try it;
+##        if you hit dependency conflicts, 3.10 is safer for TPOT.
+##      auto-sklearn — Mixed. 3.11 is supported in newer releases, but macOS support is fragile
+##        (builds native deps like pyrfr/swig; ARM Macs are hit-or-miss). Easiest path is
+##        Linux/WSL/Docker. On macOS you may need toolchain setup and still may run into build
+##        errors.
+##      LightAtoML is not actively maintained.
+##  97. /junkdete_with_time_series was a complete disaster.  I worked on it for a week and got
+##      crash after crash.  I finally got it working, but with worse results than just a simple
+##      regression using "mae".  It turns out that the only advantage with time_series is that it
+##      tries to automatically build time factors, but you do that already yourself.  You also
+##      tried trading.py whuch was just a simple hard-coded time series attempt using scikit learn.
+##      You did get it working, but it did not have good results.
+##  98. Additional documentation for Feature Sensitivity:
+        ####
+        What it means if Feature Importance is high but Prediction Influence is low.
+        It implies:
+        The model relies on this feature a lot internally, but changing its typical values does not move predictions very much.
+        The feature is used often or early in the model’s logic
+        But within the range where data usually falls, the model’s output is fairly stable
+        Common reasons this happens:
+        The feature helps separate cases, but only in narrow or boundary situations
+        The feature is highly correlated with others (shared information)
+        The feature is important for structuring the model, not for driving big swings
+        ####
+        What it means if Feature Importance is low but Prediction Influence is high.
+        It implies:
+        The model does not rely on this feature very often internally, but when it changes, predictions can shift noticeably.
+        The feature is used infrequently in the model’s logic
+        But when it matters, it has a strong effect on the prediction
+        Common reasons this happens:
+        The feature is important only for a specific subset of cases
+        The feature captures a sharp signal that applies in limited situations
+        The feature affects predictions strongly, but only when certain conditions are met
+        ####
+        What it means if Feature Importance is low and Prediction Influence is low.
+        It implies:
+        The model rarely relies on this feature, and changing its typical values does not meaningfully affect predictions.
+        The feature plays a minor role in the model’s logic
+        And its values do not cause noticeable changes in predictions
+        Common reasons this happens:
+        The feature adds little useful information
+        The feature may be noisy or redundant
+        The feature does not help distinguish between different cases
+        ####
+        What it means if Feature Importance is high and Prediction Influence is high.
+        It implies:
+        The model relies heavily on this feature, and changes in its typical values strongly affect predictions.
+        The feature is used frequently or early in the model’s logic
+        And variations in the feature lead to substantial changes in predictions
+        Common reasons this happens:
+        The feature captures a core signal in the data
+        The feature directly influences the model’s decisions
+        The feature explains a large share of the model’s predictive behavior
+
+
+
+
+################################################### Begin Modal UI Testing
+####  Test it on additional datasets.
+      Try doing both Classification and Regression on the same dataset.
+      Check logs.  Review all reports.
+      See how they fare on the Kaggle leaderboard.
+
+# This is the slowest user because of so many columns.  They only go above 400 in late afternoon PST.
+maximal_columns, classification, accuracy, secs 575, relimprovement 21.6%, valstars 0.1, topfi f44	6.08%	25.72%
+                                 bal_acc,  secs 574, relimprovement 18.6%, valstars 0.1, topfi f2	6.79%	26.93%
+                                 log_loss, secs 405, relimprovement  0.0%, valstars 0.0, topfi synthetic_f24*f82 4.18% 17.85%
+                 regression      mae    ,  secs 384, relimprovement -0.0%, valstars 0.0, topfi synthetic_f42*f48	25.88%
+                                 mse    ,  secs 418, relimprovement  0.1%, valstars 0.0  topfi synthetic_f95*f53	7.84%
+                                 r2      , secs 437, relimprovement -0.0%, valstars 0.0, topfi synthetic_f95*f53	7.84%
+                                 rmse   ,  secs 459, relimprovement  0.0%, valstars 0.0, topfi synthetic_f95*f53	7.84%
+                                 rmsle  ,  secs 401, relimprovement  0.0%, valstars 0.0, topfi f91	5.96%
+
+ai_wweek,     classification,    accuracy, secs 230, relimprovement 31.1%, valstars 4.4, topfi Stage_fear	62.14%	20.03%
+                                 bal_acc , secs 311, relimprovement 91.8%, valstars 4.6, topfi Drained_after_socializing	61.24%	21.04%
+                                 log_loss, secs 225, relimprovement 77.3%, valstars 3.9, topfi Stage_fear	37.29%	19.45%
+                                 roc_auc,  secs 232, relimprovement 94.0%, valstars 4.7, topfi Time_spent_Alone	13.30%	20.17%
+
+cirrhosis,    classification,    accuracy, secs 311, relimprovement 26.7%, valstars 2.8, topfi Bilirubin	37.72%	27.85%
+                                 bal_acc , secs 297, relimprovement 71.0%, valstars 1.8, topfi Bilirubin	26.53%	29.86%
+                                 log_loss, secs 308, relimprovement 46.0%, valstars 2.3, topfi Bilirubin	41.51%	28.41%
+
+heart_disease, classification,   accuracy, secs  51, relimprovement 59.6%, valstars 3.7, topfi ST_Slope_Up	39.44%	26.91%
+                                 bal_acc , secs  51, relimprovement 76.0%, valstars 3.8, topfi ST_Slope_Up	40.15%	27.29%
+                                 log_loss, secs  50, relimprovement 52.3%, valstars 2.6, topfi ST_Slope_Up	32.27%	23.88%
+                                 roc_auc,  secs  36, relimprovement 87.4%, valstars 4.4, topfi ST_Slope_Up	40.94%	25.28%
+
+house_prices,  regression,       mae     , secs 110, relimprovement 72.4%, valstars 3.7, topfi OverallQual	27.67%	122,751.42
+                                 mse     , secs 108, relimprovement 88.1%, valstars 4.4, topfi OverallQual	44.54%	122,751.42
+                                 r2      , secs 107, relimprovement 88.0%, valstars 4.4, topfi OverallQual	44.54%	122,751.42
+                                 rmse    , secs 111, relimprovement 65.8%, valstars 3.3, topfi OverallQual	34.81%	122,751.42
+                                 rmsle   , secs 103, relimprovement 62.8%, valstars 3.1, topfi OverallQual	31.45%	122,751.42
+
+kirinyaga,     regression,       mae     , secs 224, relimprovement 85.8%, valstars 4.3, topfi synthetic_tx_amount_mean_30d*tx_count_30d	77.77%	57,870.49
+                                 mse     , secs 227, relimprovement 98.3%, valstars 4.9, topfi synthetic_tx_amount_mean_30d*tx_count_30d	91.75%	57,870.49
+                                 r2      , secs 146, relimprovement 98.3%, valstars 4.9, topfi synthetic_tx_amount_mean_30d*tx_count_30d	94.20%	57,870.49
+                                 rmse    , secs 224, relimprovement 86.8%, valstars 4.3, topfi synthetic_tx_amount_mean_30d*tx_count_30d	71.24%	57,870.49
+                                 rmsle   , secs 199, relimprovement 52.5%, valstars 2.6, topfi synthetic_tx_amount_mean_30d*tx_count_30d	73.45%	57,870.49
+
+minimal_multiclass_text, classi, accuracy, secs  52, relimprovement 28.8%, valstars 0.5, topfi synthetic_feature_num_1^2	52.00%	31.94%
+                                 bal_acc , secs  32, relimprovement 27.4%, valstars 0.5, topfi mahalanobis_distance	31.46%	37.50%
+                                 log_loss, secs  51, relimprovement  0.4%, valstars 0.0, topfi synthetic_feature_num_1^2	28.68%	31.94%
+
+olympiad,      classification,   accuracy, secs  79, relimprovement 103.8%,valstars 4.9, topfi synthetic_x^2	33.74%	21.85%
+                                 bal_acc , secs  49, relimprovement 195.7%,valstars 4.9, topfi synthetic_x^2	35.11%	21.88%
+                                 log_loss, secs  48, relimprovement  96.7%,valstars 4.8, topfi x	48.05%	21.85%
+
+ramadan,       classification,   accuracy, secs 236, relimprovement 13.4%, valstars 2.6, topfi Age	40.69%	35.92%
+                                 bal_acc,  secs 262, relimprovement 63.0%, valstars 3.2, topfi Age	38.12%	45.57%
+                                 log_loss, secs 230, relimprovement 50.9%, valstars 2.5, topfi NumOfProducts	57.58%	21.71%
+                                 roc_auc,  secs 246, relimprovement 86.7%, valstars 4.3, topfi NumOfProducts	67.02%	21.71%
+
+sigaida,       regression,       mae     , secs 322, relimprovement 77.5%, valstars 3.9, topfi fruitset	80.45%	3,597.57
+                                 mse     , secs 327, relimprovement 92.3%, valstars 4.6, topfi fruitset	89.51%	3,597.57
+                                 r2      , secs 314, relimprovement 92.3%, valstars 4.6, topfi fruitset	89.44%	3,597.57
+                                 rmse    , secs 345, relimprovement 72.3%, valstars 3.6, topfi fruitset	80.48%	3,597.57
+                                 rmsle   , secs 237, relimprovement 70.8%, valstars 3.5, topfi fruitset	83.10%	3,597.57
+
+spaceship_titanic, classificati, accuracy, secs 147, relimprovement 58.7%, valstars 3.0, topfi CryoSleep	49.58%	25.13%
+                                 bal_acc , secs 176, relimprovement 60.1%, valstars 3.0, topfi CryoSleep	40.23%	25.13%
+                                 log_loss, secs 171, relimprovement 36.2%, valstars 1.8, topfi CryoSleep	19.22%	27.83%
+                                 roc_auc,  secs 169, relimprovement 75.2%, valstars 3.8, topfi CryoSleep	18.23%	27.83%
+
+statmod,       regression,       mae     , secs 117, relimprovement 18.7%, valstars 1.0, topfi ОТ_ЗАКАТ.48..От.заката.до.рассвета	29.81%	2.53
+                                 mse     , secs 113, relimprovement 27.8%, valstars 1.4, topfi ОТ_ЗАКАТ.48..От.заката.до.рассвета	29.76%	2.53
+                                 r2      , secs 124, relimprovement 27.4%, valstars 1.4, topfi ОТ_ЗАКАТ.48..От.заката.до.рассвета	37.09%	2.53
+                                 rmse    , secs 123, relimprovement 14.9%, valstars 0.7, topfi ОТ_ЗАКАТ.48..От.заката.до.рассвета	31.81%	2.53
+                                 rmsle   , secs  97, relimprovement  9.7%, valstars 0.5, topfi ОТ_ЗАКАТ.48..От.заката.до.рассвета	52.74%	2.53
+
+titanic, classification          accuracy, secs  50, relimprovement 35.3%, valstars 2.8, topfi synthetic_Age*Sex	57.41%	36.76%
+                                 bal_acc , secs  50, relimprovement 62.1%, valstars 3.1, topfi synthetic_Age*Sex	44.75%	25.20%
+                                 log_loss, secs  52, relimprovement 37.9%, valstars 1.9, topfi synthetic_Age*Sex	44.03%	21.59%
+                                 roc_auc,  secs  51, relimprovement 77.0%, valstars 3.9, topfi synthetic_Age*SibSp	12.52%	6.55%
+
+valuation_prediction, regressio  mae     , secs 146, relimprovement 39.5%, valstars 3.1, topfi synthetic_roundInvestment^2	27.48%	84,382.77
+                                 mse     , secs 185, relimprovement 56.0%, valstars 2.8, topfi roundInvestment	34.26%	84,382.77
+                                 r2      , secs 186, relimprovement 67.0%, valstars 3.3, topfi roundInvestment	34.26%	84,382.77
+                                 rmse    , secs 193, relimprovement 42.8%, valstars 2.1, topfi roundInvestment	25.45%	84,382.77
+                                 rmsle   , secs 182, relimprovement 65.3%, valstars 3.3, topfi roundInvestment	54.06%	84,382.77
+
+wage_predictions, regression,    mae     , secs  52, relimprovement 29.8%, valstars 1.7, topfi educ	19.47%	4.88
+                                 mse     , secs  51, relimprovement 43.2%, valstars 2.2, topfi educ	15.88%	4.88
+                                 r2      , secs  50, relimprovement 43.2%, valstars 2.2, topfi educ	15.88%	4.88
+                                 rmse    , secs  50, relimprovement 24.9%, valstars 1.2, topfi educ	15.64%	4.88
+                                 rmsle   , secs  48, relimprovement 26.3%, valstars 1.3, topfi educ	18.78%	4.88
+################################################### End Modal UI Testing
+
+
+
+
+############################################### Postings ###################################################
+
+################################################## URLs that have no free Postings
+Mind the Product
+Product Coalition
+Products That Count
+Product School
+The Product Folks
+Indie Hackers
+No Code Founders
+
+################################################# Adding a notebook to Kaggle:
+    1. https://www.kaggle.com/code  >  New Notebook  >  File → Import Notebook  >  titanic.ipynb
+        For each of your image sections:
+        Double-Click inside the Markdown cell
+        Delete the <img src="..."> line
+        Drag the PNG file from your computer directly into the cell
+    2. In the right panel under "Submit to Competition", add "Titanic - Machine Learning from Disaster"
+    3. Add the tags in the right panel "Session Options":  Beginner, BinaryClassification, Classification, DataCleaning, FeatureEngineering
+    4. Save the notebook version.
+    5. Make it shared (upper right button).
+    6. Here is the notebook location: https://www.kaggle.com/code/johndreynolds/titanic-beginners-features-data-health-baseline
+
+################################################# Posting to Kaggle Discussions:
+  You got a formal reprimand from Kaggle, so stop posting to discussions.
+    1. Title:
+    Titanic: Data Health, Feature Effects, and a Baseline
+
+    2. Content:
+    Before building and training models, it can be useful to first understand:
+    - how clean the dataset is
+    - whether synthetic features add signal
+    - which features matter most
+    - what a simple model achieves
+    - how the model compares to a naive baseline
+
+    I generated a quick diagnostic of the Titanic dataset and put the results into the notebook below.  It looks at data health, feature effects, and a simple baseline before moving to more complex modeling.  Feedback is welcome.
+
+    https://www.kaggle.com/code/johndreynolds/titanic-beginners-features-data-health-baseline
+
+    3. Add the tags:  Beginner, BinaryClassification, Classification, DataCleaning, FeatureEngineering
+
+
+################################################# Posted notebook to Kaggle Code:
+    1. https://www.kaggle.com/discussions/getting-started?sort=published (deleted)
+    2. https://www.kaggle.com/competitions/titanic/discussion?sort=published (deleted)
+    3. https://www.kaggle.com/competitions/titanic/code (25 up votes and a bronze star)
+    4. https://www.kaggle.com/code/johndreynolds/house-prices-data-health-features-baseline (nothing)
+    5. https://www.kaggle.com/code/johndreynolds/spaceship-titanic-data-health-features-baseline (nothing)
+
+
+################################################## https://www.reddit.com/r/learnmachinelearning/
+POSTED 03/31  Only got one reply thread "AI Slop"
+
+Title: Why ML metrics can be misleading when you're starting out
+
+Body:
+When I was learning ML, I kept running into this pattern:
+
+* I'd get a high accuracy (or R²) and feel good about the model
+* but it wouldn’t generalize nearly as well as I expected
+
+A few things I wish I understood earlier:
+
+* A model can beat random chance but still be worse than a simple baseline
+* Small improvements are often just noise (especially with weak validation)
+* Train vs validation behavior matters more than a single metric
+* Stability across folds is often more informative than the “best” score
+
+It took me a while to realize I was optimizing metrics without really understanding what they meant.
+
+Curious what tripped others up early on — was it overfitting, bad validation, misleading metrics, or something else?
+
+I ended up building a small tool to make these issues more obvious when working with tabular data (baselines, overfitting signals, etc.). If anyone wants to try it, it’s free: predictly.cloud
+
+Happy to answer questions or share more details.
+
+
+################################################# https://www.reddit.com/r/kaggle/
+POSTED 03/31: Only 1 response: "AI slop", I replied "OK.  Any ideas?"
+
+Title: Why your CV score doesn’t match the leaderboard (and what to check)
+
+Body:
+This used to happen to me a lot — CV looks solid, then you submit and the leaderboard drops more than you expected.
+
+Most of the time it wasn’t one big issue, just a bunch of smaller ones adding up. Things like the CV not really matching the test distribution (time splits, groups, etc.), or “improvements” that were within noise but looked real.
+
+One case that stuck with me: I had a model improve CV by ~0.01, but the fold-to-fold variation was bigger than that. It felt like progress, but in hindsight it was basically noise.
+
+What’s helped me more recently is sanity checking against a really simple baseline first, and paying more attention to how stable things are across folds. I also look at the worst fold now, not just the mean, and if something feels off I’ll sometimes try a completely different CV setup just to see if the signal holds.
+
+Curious how others approach this — do you lean more on CV, the leaderboard, or some combination? How do you decide if an improvement is actually real?
+
+
+################################################## Hacker News
+POSTED 03/31/26, no responses
+
+Title: Sanity-checking ML metrics before trusting them
+
+Link: https://predictly.cloud
+
+One thing that kept tripping me up working on tabular ML is how easy it is to fool yourself with small metric gains.
+
+A typical case: CV improves by something like +0.01, but fold-to-fold variation is larger than that. It looks like progress, but it’s basically noise.
+
+Same with baselines — I’ve had models that technically beat a baseline, but not by enough to matter in practice.
+
+I ended up wanting a quick “sanity check” before trusting any result: is this actually better than a dumb baseline? is the gain actually larger than fold variance? does it generalize across folds, or just get lucky?
+
+So I built a small tool that runs those checks automatically on tabular data. It’s not trying to replace modeling — just a fast way to catch when you’re fooling yourself before spending more time tuning.
+
+Curious how others do this in practice — especially how you decide when an improvement is real vs noise.
+
+https://predictly.cloud
+
+
+################################################## https://www.producthunt.com/forums
+POSTED 04/01/26, GOT REJECTED
+p/general
+
+Title:
+How do you sanity-check predictive ideas before committing roadmap time?
+
+Body:
+One pattern I kept running into... I would get strong intuitions like:
+“Users who do X will retain better”
+“This segment is more likely to convert”
+“This feature should drive Y outcome”
+
+But validating those usually meant:
+pulling in data science
+building a model
+waiting days or weeks
+
+So a lot of decisions ended up being:
+→ intuition + dashboards + debate
+
+Lately, I’ve been experimenting with a simpler approach:
+take a dataset
+run a quick predictive check on my own without pulling in data sciencs
+see if there’s any real signal before going deeper
+
+What surprised me:
+some “obvious” ideas had no predictive signal
+some seemingly weak ideas actually did
+
+Curious — how are you all validating these assumptions before investing real time and resources?
+
+
+
+
+################################################## https://www.reddit.com/r/datascience
+WILL NOT LET YOU POST UNTIL YOU GET MORE "POSTING/COMMENT KARMA"
+
+**Title:**
+How we sanity check model performance in practice
+
+**Body:**
+One thing that’s surprised me working on real projects is how easy it is to over-trust a model metric early on.
+
+I’ve definitely had cases where a model looked “good” on paper, but didn’t actually add much value once you looked a bit closer.
+
+A few simple checks that have saved me time:
+
+* comparing against a really basic baseline first (mean, majority class, etc.)
+* looking at train vs validation gaps to catch obvious overfitting
+* checking how stable results are across folds instead of focusing on a single score
+* being skeptical of small improvements unless they’re consistent
+
+None of this is complicated, but skipping it can lead to spending a lot of time optimizing something that doesn’t materially move the needle.
+
+One example: I’ve had models beat a baseline by a small margin, but the variance across folds was larger than the gain — which made it pretty clear it wasn’t something I’d trust in production.
+
+Curious how others handle this in practice — especially outside of Kaggle-style setups.
+
+Do you have standard baselines you always start with?
+How do you decide an improvement is actually worth pursuing?
+
+
+################################################## https://www.reddit.com/r/ProductManagement
+WILL NOT LET YOU POST UNTIL YOU GET MORE "POSTING/COMMENT KARMA"
+
+Title:
+How do you sanity-check predictive ideas before committing roadmap time?
+
+
+One pattern I keep running into:
+I get strong intuitions like:
+“Users who do X will retain better”
+“This segment is more likely to convert”
+“This feature should drive Y outcome”
+
+But validating those usually means:
+pulling in data science
+building a model
+waiting days or weeks
+
+So a lot of decisions end up being:
+→ intuition + dashboards + debate
+
+Lately, I’ve been experimenting with a simpler approach:
+take a dataset
+run a quick predictive check
+see if there’s any real signal before going deeper
+
+What surprised me:
+some “obvious” ideas had no predictive signal
+some weak ideas actually did
+
+Curious — how are you all validating these assumptions before investing real time?
+
+
+
+
+######################################## https://www.reddit.com/r/MLQuestions/
+Answer questions here.
+
+
+
+######################################## LinkedIn
+DID NOT POST
+
+Most ML models look better than they actually are.
+
+This is something I kept running into — especially working on Kaggle problems and tabular datasets.
+
+A few patterns:
+
+• A model beats baseline… but only slightly
+• Accuracy / R² looks strong, but doesn’t generalize
+• Small improvements disappear with a different validation split
+• The “best model” isn’t stable across folds
+
+It took me longer than I’d like to admit to realize:
+
+👉 A single metric is a very weak signal
+
+What’s helped me more:
+
+• Always compare against naive baselines
+• Look at train vs validation gaps
+• Check stability across folds (not just mean score)
+• Be skeptical of small gains unless they’re consistent
+
+This changed how I evaluate models entirely.
+
+Curious — what’s the biggest thing that made you rethink how you evaluate ML models?
+
+(If helpful, I built a small free tool to surface these signals automatically when working with tabular data — happy to share)
+
+
+######################################## Publish Article in https://towardsdatascience.com
+DID NOT POST
+
+Title
+Why Your Machine Learning Metrics Are Lying to You
+Article
+Writing
+When you first start building machine learning models, metrics feel like the ultimate source of truth.
+Accuracy, RMSE, R² — they give you a number. And that number feels objective.
+
+But in practice, metrics can be surprisingly misleading.
+
+After working on a number of tabular ML problems (both in Kaggle and real-world settings), I kept running into the same pattern:
+
+Models that looked good on paper didn’t actually perform as well as expected.
+
+Here are a few common failure modes.
+
+1. Beating a baseline doesn’t mean much
+It’s easy to celebrate when a model outperforms a naive baseline.
+But the real question is: by how much?
+
+If your model improves accuracy from 50% to 52%, that may not be meaningful. It could be noise, especially depending on your validation setup.
+
+Without a strong baseline comparison, it’s hard to know whether you’ve actually built something useful.
+
+2. Small improvements are often noise
+Many ML workflows optimize for incremental gains.
+But small metric improvements can be fragile:
+
+they may disappear with a different random seed
+they may depend on a particular train/validation split
+they may not generalize to new data
+If an improvement isn’t consistent, it’s probably not real.
+3. A single validation score hides instability
+Most people look at the average cross-validation score.
+But averages can hide a lot.
+
+Two models with the same mean score can behave very differently:
+
+one is stable across folds
+the other varies significantly
+In practice, the stable model is usually more reliable.
+Looking at variance (or worst-case performance) often reveals issues that the mean hides.
+
+4. Train vs validation gaps matter more than you think
+A model that performs extremely well on training data but drops on validation data is often overfitting.
+This isn’t always obvious if you only focus on the validation score.
+
+The relationship between train and validation performance is often more informative than either number alone.
+
+5. Metrics don’t tell you if the model is useful
+A model can have a “good” metric and still not be useful in practice.
+For example:
+
+it may not outperform simple heuristics by much
+it may not be stable enough to trust
+it may rely on patterns that don’t generalize
+Metrics measure performance, but not necessarily usefulness.
+A more reliable way to evaluate models
+Over time, I’ve found a few checks to be consistently helpful:
+Compare against simple baselines
+Look at train vs validation behavior
+Check stability across folds
+Be skeptical of small improvements
+These are simple ideas, but they prevent a lot of wasted effort.
+Why I built a tool for this
+After running into these issues repeatedly, I built a small tool to make these signals more visible when working with tabular data.
+The goal isn’t to replace existing ML libraries, but to add a layer of sanity checks:
+
+baseline comparisons
+overfitting signals
+validation stability
+If you’re interested, you can try it here: https://predictly.cloud
+Final thought
+It’s easy to optimize for better numbers.
+It’s much harder — and more important — to make sure those numbers actually mean something.
+
+And in many cases, the difference between the two is what separates a model that looks good from one that actually works.
+

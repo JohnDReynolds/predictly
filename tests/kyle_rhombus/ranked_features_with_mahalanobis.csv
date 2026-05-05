@@ -1,0 +1,53 @@
+Feature,Model Importance
+zoominfo_revenue*partner_level_Reseller,0.1826003797
+mahalanobis_outlier,0.1018578254
+subsidiary_ratio*partner_level_Reseller,0.0874482408
+potential_devices*partner_level_Reseller,0.076900012
+potential_devices*zoominfo_revenue,0.0627249973
+us_region_Midwest,0.0574941878
+partner_level_Reseller,0.0542105884
+zoominfo_locations,0.0484244409
+mahalanobis_distance,0.0287533593
+zoominfo_funding,0.0259135495
+zoominfo_growth_2yr*partner_level_Reseller,0.0246196812
+zi_industry_Media Internet,0.0228345932
+potential_devices*subsidiary_ratio,0.021835419
+zoominfo_revenue,0.0212264925
+potential_devices*us_region_Unknown US,0.0210698241
+zoominfo_growth_1yr^2,0.0150951195
+zoominfo_revenue*is_active_company,0.0143119062
+zoominfo_growth_2yr^2,0.0118605629
+zoominfo_employees,0.0115941931
+zi_industry_Business Services,0.0112649445
+zoominfo_growth_2yr*subsidiary_ratio,0.0111957236
+potential_devices*is_active_company,0.011032296
+potential_devices^2,0.0100759997
+potential_devices,0.0083087252
+us_region_Northeast,0.0076234779
+zoominfo_revenue^2,0.0068950644
+zoominfo_growth_1yr*partner_level_Reseller,0.0053103154
+us_region_Southeast,0.0052136439
+zi_industry_Construction,0.0035102
+zoominfo_revenue*us_region_Unknown US,0.0034706881
+is_active_company,0.003445253
+subsidiary_ratio,0.0030322896
+zi_industry_Other,0.0029492163
+zoominfo_growth_2yr*us_region_Unknown US,0.0017847605
+zoominfo_growth_1yr*us_region_Unknown US,0.0014904749
+zi_industry_Healthcare Services,0.0013043134
+us_region_West,0.0012245357
+zoominfo_growth_2yr*zoominfo_growth_1yr,0.0011757974
+zi_industry_Law Firms Legal Services,0.0011085969
+zi_industry_Real Estate,0.0010727236
+zi_industry_Consumer Services,0.000818868
+zi_industry_Telecommunications,0.0008035928
+zoominfo_growth_1yr,0.0007918226
+us_region_Unknown US,0.0007910264
+zoominfo_growth_2yr,0.0007589988
+subsidiary_ratio^2,0.0006815745
+potential_devices*zoominfo_growth_2yr,0.0006405206
+zi_industry_Finance,0.0005648539
+us_region_International,0.0004073853
+zi_industry_Energy Utilities Waste,0.0002725883
+zi_industry_Manufacturing,0.0001609107
+zi_industry_Agriculture,0.0000434452

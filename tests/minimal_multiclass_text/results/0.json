@@ -1,0 +1,72 @@
+{
+    "baseline_comparison": {
+        "absolute_improvement": 0.07001058124714421,
+        "baseline_loss": 0.75,
+        "baseline_type": "majority class",
+        "baseline_value": 0.25,
+        "metric": "accuracy",
+        "model_loss": 0.6799894187528558,
+        "model_value": 0.3200105812471442,
+        "n_classes": 4,
+        "n_samples": 500,
+        "orientation": "higher_is_better",
+        "relative_improvement_percent": 0.28004232498857684,
+        "relative_improvement_stars": 0.5,
+        "task": "classification"
+    },
+    "display_metric": "Accuracy",
+    "display_task": "Classification",
+    "feature_importances": "[{\"Feature\":\"synthetic_feature_num_1^2\",\"Model Importance\":0.3181818182,\"Prediction Influence\":0.3650793651},{\"Feature\":\"feature_num_2\",\"Model Importance\":0.3,\"Prediction Influence\":0.0317460317},{\"Feature\":\"feature_num_1\",\"Model Importance\":0.2636363636,\"Prediction Influence\":0.3174603175},{\"Feature\":\"mahalanobis_distance\",\"Model Importance\":0.1181818182,\"Prediction Influence\":0.2857142857}]",
+    "score_penalized": 0.8279905301359467,
+    "segmented_performance": {
+        "available": true,
+        "by_confidence_band": {
+            "available": true,
+            "n_samples_used": 500,
+            "segments": [
+                {
+                    "band_label": "<0.50",
+                    "count": 500,
+                    "fraction": 1.0,
+                    "lower": 0.0,
+                    "metric_value": 0.32,
+                    "upper": 0.5
+                }
+            ]
+        },
+        "by_target_quantile": {
+            "available": false,
+            "reason": "Target quantile segments are only defined for regression task."
+        },
+        "metric": "accuracy",
+        "n_samples": 500,
+        "n_samples_used": 500,
+        "task": "classification"
+    },
+    "status": "ok",
+    "train_metric": 0.39006671342000676,
+    "train_metric_stars": 0.9,
+    "validation_metric": 0.3200105812471442,
+    "validation_metric_stars": 0.5,
+    "validation_stability": {
+        "absolute_range": 0.0239520958083832,
+        "mean": 0.3200105812471443,
+        "n_units": 3,
+        "relative_range_percent": 0.07484782445329514,
+        "relative_std_percent": 0.04006926057038011,
+        "stability_message": "±4.0% across 3 folds",
+        "stability_stars": 4.3,
+        "std": 0.01282258736527062,
+        "unit_type": "fold",
+        "values": [
+            0.3293413173652695,
+            0.3053892215568863,
+            0.32530120481927716
+        ]
+    },
+    "validation_train_ratio": 0.8351987943625132,
+    "validation_train_ratio_stars": 3.9,
+    "x_test_health": "[{\"Column\":\"feature_num_1\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"float64\",\"Row_Qty\":120,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":116,\"Unique_Pct\":0.9666666667,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":0.34,\"Most_Frequent_Qty\":2,\"Most_Frequent_Pct\":0.0166666667,\"Classes_Qty\":116,\"Majority_Class\":0.34,\"Majority_Pct\":0.0166666667,\"Minority_Class\":-0.989,\"Minority_Pct\":0.0083333333,\"Min\":-2.18,\"Median\":0.0905,\"Mean\":0.0656666667,\"Max\":2.809,\"StdDev\":0.9044313998},{\"Column\":\"feature_num_2\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"float64\",\"Row_Qty\":120,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":119,\"Unique_Pct\":0.9916666667,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":9.273,\"Most_Frequent_Qty\":2,\"Most_Frequent_Pct\":0.0166666667,\"Classes_Qty\":119,\"Majority_Class\":9.273,\"Majority_Pct\":0.0166666667,\"Minority_Class\":13.104,\"Minority_Pct\":0.0083333333,\"Min\":4.697,\"Median\":9.7805,\"Mean\":9.7818416667,\"Max\":14.915,\"StdDev\":2.099277783}]",
+    "x_train_health": "[{\"Column\":\"city\",\"Status\":\"info\",\"Messages\":[\"Column is almost constant (<1% unique values).\"],\"Data_Type\":\"object\",\"Row_Qty\":500,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":4,\"Unique_Pct\":0.008,\"Is_Constant\":false,\"Is_Almost_Constant\":true,\"Most_Frequent_Value\":\"Northville\",\"Most_Frequent_Qty\":125,\"Most_Frequent_Pct\":0.25,\"Classes_Qty\":4,\"Majority_Class\":\"Northville\",\"Majority_Pct\":0.25,\"Minority_Class\":\"Westport\",\"Minority_Pct\":0.25,\"Min\":null,\"Median\":null,\"Mean\":null,\"Max\":null,\"StdDev\":null},{\"Column\":\"feature_num_1\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"float64\",\"Row_Qty\":500,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":467,\"Unique_Pct\":0.934,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":0.316,\"Most_Frequent_Qty\":2,\"Most_Frequent_Pct\":0.004,\"Classes_Qty\":467,\"Majority_Class\":0.316,\"Majority_Pct\":0.004,\"Minority_Class\":-1.495,\"Minority_Pct\":0.002,\"Min\":-2.567,\"Median\":0.003,\"Mean\":-0.013122,\"Max\":2.914,\"StdDev\":0.9599274475},{\"Column\":\"feature_num_2\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"float64\",\"Row_Qty\":500,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":480,\"Unique_Pct\":0.96,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":10.262,\"Most_Frequent_Qty\":3,\"Most_Frequent_Pct\":0.006,\"Classes_Qty\":480,\"Majority_Class\":10.262,\"Majority_Pct\":0.006,\"Minority_Class\":11.648,\"Minority_Pct\":0.002,\"Min\":2.703,\"Median\":10.0175,\"Mean\":9.910704,\"Max\":16.358,\"StdDev\":2.036778862}]",
+    "y_predictions": "[{\"ID\":0,\"city\":\"Northville\"},{\"ID\":1,\"city\":\"Northville\"},{\"ID\":2,\"city\":\"Northville\"},{\"ID\":3,\"city\":\"Eastburg\"},{\"ID\":4,\"city\":\"Northville\"},{\"ID\":5,\"city\":\"Eastburg\"},{\"ID\":6,\"city\":\"Eastburg\"},{\"ID\":7,\"city\":\"Northville\"},{\"ID\":8,\"city\":\"Eastburg\"},{\"ID\":9,\"city\":\"Northville\"},{\"ID\":10,\"city\":\"Southtown\"},{\"ID\":11,\"city\":\"Eastburg\"},{\"ID\":12,\"city\":\"Northville\"},{\"ID\":13,\"city\":\"Southtown\"},{\"ID\":14,\"city\":\"Southtown\"},{\"ID\":15,\"city\":\"Southtown\"},{\"ID\":16,\"city\":\"Northville\"},{\"ID\":17,\"city\":\"Northville\"},{\"ID\":18,\"city\":\"Northville\"},{\"ID\":19,\"city\":\"Eastburg\"},{\"ID\":20,\"city\":\"Westport\"},{\"ID\":21,\"city\":\"Southtown\"},{\"ID\":22,\"city\":\"Northville\"},{\"ID\":23,\"city\":\"Northville\"},{\"ID\":24,\"city\":\"Westport\"},{\"ID\":25,\"city\":\"Northville\"},{\"ID\":26,\"city\":\"Southtown\"},{\"ID\":27,\"city\":\"Northville\"},{\"ID\":28,\"city\":\"Northville\"},{\"ID\":29,\"city\":\"Eastburg\"},{\"ID\":30,\"city\":\"Eastburg\"},{\"ID\":31,\"city\":\"Westport\"},{\"ID\":32,\"city\":\"Northville\"},{\"ID\":33,\"city\":\"Northville\"},{\"ID\":34,\"city\":\"Northville\"},{\"ID\":35,\"city\":\"Northville\"},{\"ID\":36,\"city\":\"Eastburg\"},{\"ID\":37,\"city\":\"Northville\"},{\"ID\":38,\"city\":\"Northville\"},{\"ID\":39,\"city\":\"Northville\"},{\"ID\":40,\"city\":\"Southtown\"},{\"ID\":41,\"city\":\"Eastburg\"},{\"ID\":42,\"city\":\"Eastburg\"},{\"ID\":43,\"city\":\"Southtown\"},{\"ID\":44,\"city\":\"Southtown\"},{\"ID\":45,\"city\":\"Southtown\"},{\"ID\":46,\"city\":\"Westport\"},{\"ID\":47,\"city\":\"Northville\"},{\"ID\":48,\"city\":\"Southtown\"},{\"ID\":49,\"city\":\"Eastburg\"},{\"ID\":50,\"city\":\"Southtown\"},{\"ID\":51,\"city\":\"Southtown\"},{\"ID\":52,\"city\":\"Northville\"},{\"ID\":53,\"city\":\"Eastburg\"},{\"ID\":54,\"city\":\"Southtown\"},{\"ID\":55,\"city\":\"Eastburg\"},{\"ID\":56,\"city\":\"Northville\"},{\"ID\":57,\"city\":\"Northville\"},{\"ID\":58,\"city\":\"Northville\"},{\"ID\":59,\"city\":\"Westport\"},{\"ID\":60,\"city\":\"Southtown\"},{\"ID\":61,\"city\":\"Eastburg\"},{\"ID\":62,\"city\":\"Northville\"},{\"ID\":63,\"city\":\"Eastburg\"},{\"ID\":64,\"city\":\"Northville\"},{\"ID\":65,\"city\":\"Southtown\"},{\"ID\":66,\"city\":\"Southtown\"},{\"ID\":67,\"city\":\"Westport\"},{\"ID\":68,\"city\":\"Eastburg\"},{\"ID\":69,\"city\":\"Northville\"},{\"ID\":70,\"city\":\"Westport\"},{\"ID\":71,\"city\":\"Southtown\"},{\"ID\":72,\"city\":\"Northville\"},{\"ID\":73,\"city\":\"Southtown\"},{\"ID\":74,\"city\":\"Southtown\"},{\"ID\":75,\"city\":\"Westport\"},{\"ID\":76,\"city\":\"Eastburg\"},{\"ID\":77,\"city\":\"Southtown\"},{\"ID\":78,\"city\":\"Northville\"},{\"ID\":79,\"city\":\"Eastburg\"},{\"ID\":80,\"city\":\"Northville\"},{\"ID\":81,\"city\":\"Northville\"},{\"ID\":82,\"city\":\"Westport\"},{\"ID\":83,\"city\":\"Northville\"},{\"ID\":84,\"city\":\"Northville\"},{\"ID\":85,\"city\":\"Northville\"},{\"ID\":86,\"city\":\"Southtown\"},{\"ID\":87,\"city\":\"Southtown\"},{\"ID\":88,\"city\":\"Eastburg\"},{\"ID\":89,\"city\":\"Northville\"},{\"ID\":90,\"city\":\"Northville\"},{\"ID\":91,\"city\":\"Northville\"},{\"ID\":92,\"city\":\"Eastburg\"},{\"ID\":93,\"city\":\"Northville\"},{\"ID\":94,\"city\":\"Southtown\"},{\"ID\":95,\"city\":\"Eastburg\"},{\"ID\":96,\"city\":\"Eastburg\"},{\"ID\":97,\"city\":\"Northville\"},{\"ID\":98,\"city\":\"Eastburg\"},{\"ID\":99,\"city\":\"Eastburg\"},{\"ID\":100,\"city\":\"Eastburg\"},{\"ID\":101,\"city\":\"Northville\"},{\"ID\":102,\"city\":\"Westport\"},{\"ID\":103,\"city\":\"Northville\"},{\"ID\":104,\"city\":\"Southtown\"},{\"ID\":105,\"city\":\"Northville\"},{\"ID\":106,\"city\":\"Southtown\"},{\"ID\":107,\"city\":\"Southtown\"},{\"ID\":108,\"city\":\"Eastburg\"},{\"ID\":109,\"city\":\"Eastburg\"},{\"ID\":110,\"city\":\"Eastburg\"},{\"ID\":111,\"city\":\"Southtown\"},{\"ID\":112,\"city\":\"Southtown\"},{\"ID\":113,\"city\":\"Northville\"},{\"ID\":114,\"city\":\"Northville\"},{\"ID\":115,\"city\":\"Northville\"},{\"ID\":116,\"city\":\"Eastburg\"},{\"ID\":117,\"city\":\"Northville\"},{\"ID\":118,\"city\":\"Westport\"},{\"ID\":119,\"city\":\"Southtown\"}]"
+}

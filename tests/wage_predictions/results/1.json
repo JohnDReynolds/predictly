@@ -1,0 +1,97 @@
+{
+    "baseline_comparison": {
+        "absolute_improvement": 7.047076483412848,
+        "baseline_loss": 15.245423139316975,
+        "baseline_type": "mean",
+        "baseline_value": 15.245423139316975,
+        "metric": "mse",
+        "model_loss": 8.198346655904126,
+        "model_value": 8.198346655904126,
+        "n_classes": null,
+        "n_samples": 420,
+        "orientation": "lower_is_better",
+        "relative_improvement_percent": 0.46224210499208035,
+        "relative_improvement_stars": 2.3,
+        "task": "regression"
+    },
+    "display_metric": "MSE",
+    "display_task": "Regression",
+    "feature_importances": "[{\"Feature\":\"educ\",\"Model Importance\":0.2674864302,\"Prediction Influence\":4.8840377129},{\"Feature\":\"female\",\"Model Importance\":0.1863288374,\"Prediction Influence\":-2.7208895842},{\"Feature\":\"synthetic_educ*married\",\"Model Importance\":0.1555341841,\"Prediction Influence\":3.8191437079},{\"Feature\":\"synthetic_tenure*educ\",\"Model Importance\":0.1267320368,\"Prediction Influence\":4.7407216993},{\"Feature\":\"synthetic_exper*educ\",\"Model Importance\":0.0573367749,\"Prediction Influence\":3.393737503},{\"Feature\":\"synthetic_tenure*married\",\"Model Importance\":0.0428967256,\"Prediction Influence\":null},{\"Feature\":\"exper\",\"Model Importance\":0.035225396,\"Prediction Influence\":null},{\"Feature\":\"tenure\",\"Model Importance\":0.0345318306,\"Prediction Influence\":null},{\"Feature\":\"synthetic_exper*married\",\"Model Importance\":0.0236539199,\"Prediction Influence\":null},{\"Feature\":\"mahalanobis_distance\",\"Model Importance\":0.0197676006,\"Prediction Influence\":null},{\"Feature\":\"synthetic_tenure^2\",\"Model Importance\":0.0176642243,\"Prediction Influence\":null},{\"Feature\":\"synthetic_exper*tenure\",\"Model Importance\":0.0172128501,\"Prediction Influence\":null},{\"Feature\":\"synthetic_exper*female\",\"Model Importance\":0.009765772,\"Prediction Influence\":null},{\"Feature\":\"synthetic_tenure*female\",\"Model Importance\":0.0058634176,\"Prediction Influence\":null}]",
+    "score_penalized": 10.851134287693263,
+    "segmented_performance": {
+        "available": true,
+        "by_confidence_band": {
+            "available": false,
+            "reason": "Confidence bands require classification task with prediction probabilities and predictions."
+        },
+        "by_target_quantile": {
+            "available": true,
+            "n_samples_used": 420,
+            "segments": [
+                {
+                    "count": 105,
+                    "fraction": 0.25,
+                    "metric_value": 3.4333084553350366,
+                    "target_high": 3.322499930858612,
+                    "target_low": 0.5299999713897705,
+                    "target_mean": 2.841714310646057
+                },
+                {
+                    "count": 105,
+                    "fraction": 0.25,
+                    "metric_value": 3.818626614054713,
+                    "target_high": 4.640000104904175,
+                    "target_low": 3.322499930858612,
+                    "target_mean": 3.958095237186977
+                },
+                {
+                    "count": 104,
+                    "fraction": 0.24761904761904763,
+                    "metric_value": 2.8008853441304185,
+                    "target_high": 7.139999866485596,
+                    "target_low": 4.640000104904175,
+                    "target_mean": 5.853365389200357
+                },
+                {
+                    "count": 106,
+                    "fraction": 0.2523809523809524,
+                    "metric_value": 22.5524560132476,
+                    "target_high": 24.979999542236328,
+                    "target_low": 7.139999866485596,
+                    "target_mean": 11.408207564983728
+                }
+            ]
+        },
+        "metric": "mse",
+        "n_samples": 420,
+        "n_samples_used": 420,
+        "task": "regression"
+    },
+    "status": "ok",
+    "train_metric": 6.6256606764440225,
+    "train_metric_stars": 2.8,
+    "validation_metric": 8.198346655904126,
+    "validation_metric_stars": 2.3,
+    "validation_stability": {
+        "absolute_range": 1.6991352268358684,
+        "mean": 8.198346655904128,
+        "n_units": 4,
+        "relative_range_percent": 0.20725340097838113,
+        "relative_std_percent": 0.09355611328508752,
+        "stability_message": "±9.4% across 4 folds",
+        "stability_stars": 3.7,
+        "std": 0.767005448490185,
+        "unit_type": "fold",
+        "values": [
+            7.94512909339089,
+            8.679295602213086,
+            7.234913350588331,
+            8.9340485774242
+        ]
+    },
+    "validation_train_ratio": 0.8249593428945763,
+    "validation_train_ratio_stars": 3.7,
+    "x_test_health": "[{\"Column\":\"educ\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"int64\",\"Row_Qty\":106,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":11,\"Unique_Pct\":0.1037735849,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":12,\"Most_Frequent_Qty\":44,\"Most_Frequent_Pct\":0.4150943396,\"Classes_Qty\":11,\"Majority_Class\":12,\"Majority_Pct\":0.4150943396,\"Minority_Class\":6,\"Minority_Pct\":0.0094339623,\"Min\":6.0,\"Median\":12.0,\"Mean\":12.9433962264,\"Max\":18.0,\"StdDev\":2.2796415285},{\"Column\":\"exper\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"int64\",\"Row_Qty\":106,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":39,\"Unique_Pct\":0.3679245283,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":2,\"Most_Frequent_Qty\":10,\"Most_Frequent_Pct\":0.0943396226,\"Classes_Qty\":39,\"Majority_Class\":2,\"Majority_Pct\":0.0943396226,\"Minority_Class\":16,\"Minority_Pct\":0.0094339623,\"Min\":1.0,\"Median\":12.0,\"Mean\":14.7641509434,\"Max\":45.0,\"StdDev\":12.4583510999},{\"Column\":\"married\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"int64\",\"Row_Qty\":106,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":2,\"Unique_Pct\":0.0188679245,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":1,\"Most_Frequent_Qty\":60,\"Most_Frequent_Pct\":0.5660377358,\"Classes_Qty\":2,\"Majority_Class\":1,\"Majority_Pct\":0.5660377358,\"Minority_Class\":0,\"Minority_Pct\":0.4339622642,\"Min\":0.0,\"Median\":1.0,\"Mean\":0.5660377358,\"Max\":1.0,\"StdDev\":0.4979743333},{\"Column\":\"female\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"int64\",\"Row_Qty\":106,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":2,\"Unique_Pct\":0.0188679245,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":1,\"Most_Frequent_Qty\":55,\"Most_Frequent_Pct\":0.5188679245,\"Classes_Qty\":2,\"Majority_Class\":1,\"Majority_Pct\":0.5188679245,\"Minority_Class\":0,\"Minority_Pct\":0.4811320755,\"Min\":0.0,\"Median\":1.0,\"Mean\":0.5188679245,\"Max\":1.0,\"StdDev\":0.5020174931},{\"Column\":\"tenure\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"int64\",\"Row_Qty\":106,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":20,\"Unique_Pct\":0.1886792453,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":0,\"Most_Frequent_Qty\":36,\"Most_Frequent_Pct\":0.3396226415,\"Classes_Qty\":20,\"Majority_Class\":0,\"Majority_Pct\":0.3396226415,\"Minority_Class\":18,\"Minority_Pct\":0.0094339623,\"Min\":0.0,\"Median\":2.0,\"Mean\":4.2641509434,\"Max\":31.0,\"StdDev\":6.4058037476}]",
+    "x_train_health": "[{\"Column\":\"educ\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"int64\",\"Row_Qty\":420,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":18,\"Unique_Pct\":0.0428571429,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":12.0,\"Most_Frequent_Qty\":154,\"Most_Frequent_Pct\":0.3666666667,\"Classes_Qty\":18,\"Majority_Class\":12.0,\"Majority_Pct\":0.3666666667,\"Minority_Class\":2.0,\"Minority_Pct\":0.0023809524,\"Min\":0.0,\"Median\":12.0,\"Mean\":12.4666666667,\"Max\":18.0,\"StdDev\":2.8738527163},{\"Column\":\"exper\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"int64\",\"Row_Qty\":420,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":51,\"Unique_Pct\":0.1214285714,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":3.0,\"Most_Frequent_Qty\":27,\"Most_Frequent_Pct\":0.0642857143,\"Classes_Qty\":51,\"Majority_Class\":3.0,\"Majority_Pct\":0.0642857143,\"Minority_Class\":46.0,\"Minority_Pct\":0.0023809524,\"Min\":1.0,\"Median\":14.0,\"Mean\":17.5857142857,\"Max\":51.0,\"StdDev\":13.7949451402},{\"Column\":\"married\",\"Status\":\"info\",\"Messages\":[\"Column is almost constant (<1% unique values).\"],\"Data_Type\":\"int64\",\"Row_Qty\":420,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":2,\"Unique_Pct\":0.0047619048,\"Is_Constant\":false,\"Is_Almost_Constant\":true,\"Most_Frequent_Value\":1.0,\"Most_Frequent_Qty\":260,\"Most_Frequent_Pct\":0.619047619,\"Classes_Qty\":2,\"Majority_Class\":1.0,\"Majority_Pct\":0.619047619,\"Minority_Class\":0.0,\"Minority_Pct\":0.380952381,\"Min\":0.0,\"Median\":1.0,\"Mean\":0.619047619,\"Max\":1.0,\"StdDev\":0.4862000606},{\"Column\":\"female\",\"Status\":\"info\",\"Messages\":[\"Column is almost constant (<1% unique values).\"],\"Data_Type\":\"int64\",\"Row_Qty\":420,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":2,\"Unique_Pct\":0.0047619048,\"Is_Constant\":false,\"Is_Almost_Constant\":true,\"Most_Frequent_Value\":0.0,\"Most_Frequent_Qty\":223,\"Most_Frequent_Pct\":0.530952381,\"Classes_Qty\":2,\"Majority_Class\":0.0,\"Majority_Pct\":0.530952381,\"Minority_Class\":1.0,\"Minority_Pct\":0.469047619,\"Min\":0.0,\"Median\":0.0,\"Mean\":0.469047619,\"Max\":1.0,\"StdDev\":0.49963619},{\"Column\":\"tenure\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"int64\",\"Row_Qty\":420,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":34,\"Unique_Pct\":0.080952381,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":0.0,\"Most_Frequent_Qty\":127,\"Most_Frequent_Pct\":0.3023809524,\"Classes_Qty\":34,\"Majority_Class\":0.0,\"Majority_Pct\":0.3023809524,\"Minority_Class\":39.0,\"Minority_Pct\":0.0023809524,\"Min\":0.0,\"Median\":2.0,\"Mean\":5.3166666667,\"Max\":44.0,\"StdDev\":7.4087742816},{\"Column\":\"wage\",\"Status\":\"ok\",\"Messages\":[],\"Data_Type\":\"float64\",\"Row_Qty\":420,\"Missing_Qty\":0,\"Missing_Pct\":0.0,\"Unique_Qty\":201,\"Unique_Pct\":0.4785714286,\"Is_Constant\":false,\"Is_Almost_Constant\":false,\"Most_Frequent_Value\":3.0,\"Most_Frequent_Qty\":32,\"Most_Frequent_Pct\":0.0761904762,\"Classes_Qty\":201,\"Majority_Class\":3.0,\"Majority_Pct\":0.0761904762,\"Minority_Class\":6.3499999046,\"Minority_Pct\":0.0023809524,\"Min\":0.5299999714,\"Median\":4.6400001049,\"Mean\":6.0285714402,\"Max\":24.9799995422,\"StdDev\":3.9091953644}]",
+    "y_predictions": "[{\"ID\":0,\"wage\":3.0764328241},{\"ID\":1,\"wage\":9.931417942},{\"ID\":2,\"wage\":4.0593326092},{\"ID\":3,\"wage\":3.4572839737},{\"ID\":4,\"wage\":8.6637041569},{\"ID\":5,\"wage\":8.2772080898},{\"ID\":6,\"wage\":5.0569748878},{\"ID\":7,\"wage\":7.8119549751},{\"ID\":8,\"wage\":3.0740023255},{\"ID\":9,\"wage\":8.5469384193},{\"ID\":10,\"wage\":5.3446278572},{\"ID\":11,\"wage\":10.7315957546},{\"ID\":12,\"wage\":8.1071456671},{\"ID\":13,\"wage\":7.486204505},{\"ID\":14,\"wage\":4.1066510677},{\"ID\":15,\"wage\":3.9603459835},{\"ID\":16,\"wage\":5.2585732937},{\"ID\":17,\"wage\":2.9474574327},{\"ID\":18,\"wage\":4.06029737},{\"ID\":19,\"wage\":8.1918904781},{\"ID\":20,\"wage\":3.4865020514},{\"ID\":21,\"wage\":7.0901614428},{\"ID\":22,\"wage\":4.5029366016},{\"ID\":23,\"wage\":3.9083577991},{\"ID\":24,\"wage\":3.0846022367},{\"ID\":25,\"wage\":5.3495326042},{\"ID\":26,\"wage\":3.0238854289},{\"ID\":27,\"wage\":4.4615870118},{\"ID\":28,\"wage\":6.3867806196},{\"ID\":29,\"wage\":4.0507469773},{\"ID\":30,\"wage\":4.2357312441},{\"ID\":31,\"wage\":3.4421318173},{\"ID\":32,\"wage\":5.8695406914},{\"ID\":33,\"wage\":7.6237118244},{\"ID\":34,\"wage\":6.9911699295},{\"ID\":35,\"wage\":7.1320320368},{\"ID\":36,\"wage\":5.0976945162},{\"ID\":37,\"wage\":8.5780854225},{\"ID\":38,\"wage\":3.4572839737},{\"ID\":39,\"wage\":4.172513485},{\"ID\":40,\"wage\":8.3038705587},{\"ID\":41,\"wage\":5.6428861618},{\"ID\":42,\"wage\":8.3393275738},{\"ID\":43,\"wage\":7.2716469765},{\"ID\":44,\"wage\":8.5123431683},{\"ID\":45,\"wage\":3.4622331858},{\"ID\":46,\"wage\":9.0332090855},{\"ID\":47,\"wage\":6.9125488997},{\"ID\":48,\"wage\":7.0799643993},{\"ID\":49,\"wage\":10.1809096336},{\"ID\":50,\"wage\":4.0744394064},{\"ID\":51,\"wage\":9.4416630268},{\"ID\":52,\"wage\":8.0552740097},{\"ID\":53,\"wage\":3.7690233588},{\"ID\":54,\"wage\":8.6624026299},{\"ID\":55,\"wage\":3.4622331858},{\"ID\":56,\"wage\":5.3293133974},{\"ID\":57,\"wage\":5.9534982443},{\"ID\":58,\"wage\":4.2744215727},{\"ID\":59,\"wage\":5.6401796341},{\"ID\":60,\"wage\":7.0470812321},{\"ID\":61,\"wage\":4.9763166904},{\"ID\":62,\"wage\":7.8608783484},{\"ID\":63,\"wage\":6.3844628334},{\"ID\":64,\"wage\":5.559223175},{\"ID\":65,\"wage\":4.7707253695},{\"ID\":66,\"wage\":3.7733883858},{\"ID\":67,\"wage\":8.2034368515},{\"ID\":68,\"wage\":3.6860389113},{\"ID\":69,\"wage\":6.102427721},{\"ID\":70,\"wage\":3.5779751539},{\"ID\":71,\"wage\":5.9334275723},{\"ID\":72,\"wage\":4.5910375118},{\"ID\":73,\"wage\":3.574018538},{\"ID\":74,\"wage\":8.4480189085},{\"ID\":75,\"wage\":6.4832596779},{\"ID\":76,\"wage\":5.4622240067},{\"ID\":77,\"wage\":5.459179759},{\"ID\":78,\"wage\":3.3389540911},{\"ID\":79,\"wage\":9.9063289165},{\"ID\":80,\"wage\":6.7416176796},{\"ID\":81,\"wage\":3.3556312919},{\"ID\":82,\"wage\":4.0744394064},{\"ID\":83,\"wage\":4.0240125656},{\"ID\":84,\"wage\":5.0015306473},{\"ID\":85,\"wage\":4.1257745028},{\"ID\":86,\"wage\":6.4403592348},{\"ID\":87,\"wage\":8.3729478121},{\"ID\":88,\"wage\":4.3320908546},{\"ID\":89,\"wage\":3.0846022367},{\"ID\":90,\"wage\":8.0864896774},{\"ID\":91,\"wage\":5.3790031672},{\"ID\":92,\"wage\":6.034658432},{\"ID\":93,\"wage\":3.300922811},{\"ID\":94,\"wage\":8.8965580463},{\"ID\":95,\"wage\":11.0297167301},{\"ID\":96,\"wage\":4.0036816597},{\"ID\":97,\"wage\":7.9061915874},{\"ID\":98,\"wage\":6.7776600122},{\"ID\":99,\"wage\":5.8674579859},{\"ID\":100,\"wage\":5.2890702486},{\"ID\":101,\"wage\":5.5791703463},{\"ID\":102,\"wage\":5.7861664295},{\"ID\":103,\"wage\":5.1078326702},{\"ID\":104,\"wage\":5.3384898901},{\"ID\":105,\"wage\":6.0345038176}]"
+}

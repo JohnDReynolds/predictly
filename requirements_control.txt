@@ -1,0 +1,5 @@
+# requirements_control.txt - Used for lightweight Modal endpoints
+# Pinned version numbers should agree with requirements.txt
+numpy==1.26.4
+pandas==2.2.3
+psutil==7.0.0
