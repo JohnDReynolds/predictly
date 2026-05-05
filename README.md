@@ -100,8 +100,9 @@ After modeling and training, Predictly shows several key outputs:
 
 <img src="images/1_model_overview.png" alt="Model Overview" width="600"/>
 <img src="images/2_baseline_comparison.png" alt="Baseline Comparison" width="600"/>
-<img src="images/3_where_model_works_best.png" alt="Where The Model Works Best" width="600"/>
-<img src="images/4_feature_effects.png" alt="Feature Effects" width="600"/>
-<img src="images/5_training_data_health.png" alt="Training Data Health" width="600"/>
-<img src="images/6_prediction_data_health.png" alt="Prediction Data Health" width="600"/>
-<img src="images/7_predictions.png" alt="Predictions" width="150"/>
+<img src="images/3_metric_variation.png" alt="Metric Variation Across Folds" width="600"/>
+<img src="images/4_where_model_works_best.png" alt="Where The Model Works Best" width="600"/>
+<img src="images/5_feature_effects.png" alt="Feature Effects" width="600"/>
+<img src="images/6_training_data_health.png" alt="Training Data Health" width="600"/>
+<img src="images/7_prediction_data_health.png" alt="Prediction Data Health" width="600"/>
+<img src="images/8_predictions.png" alt="Predictions" width="150"/>
