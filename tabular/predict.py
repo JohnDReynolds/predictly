@@ -21,13 +21,11 @@ import time
 from typing import Any, Callable, cast, Iterable, TypeAlias
 from uuid import uuid4
 
-
 # Third-Party imports
 from joblib import Parallel, delayed
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
-
 
 # Project imports
 from tabular.data_health import build_column_health_summary
@@ -40,7 +38,6 @@ from tabular.trainers import (
 )
 import tabular.utilities as util
 from tabular.utilities import MLFramework, ModelResult, Option, YPredictionsType, YSeriesType
-
 
 # Type Aliases
 _TrainingTaskType: TypeAlias = tuple[
@@ -59,8 +56,15 @@ _YTransformationFunctionType: TypeAlias = Callable[[YSeriesType], YSeriesType]
 def _anys_equal(a: Any, b: Any) -> bool:
     """Recursively compare two config-like structures.
 
-    Treats NaN values as equal and supports Mapping and Sequence containers.
-    For all other types, falls back to ==.
+    Treats NaN values as equal and supports Mapping and sequence containers.
+    For all other types, falls back to normal equality.
+
+    Args:
+        a: First object to compare.
+        b: Second object to compare.
+
+    Returns:
+        True if the two objects are recursively equal; False otherwise.
     """
     if a is b:
         return True
@@ -89,7 +93,26 @@ def _anys_equal(a: Any, b: Any) -> bool:
 
 
 def _get_y_predictions(**options: Any) -> tuple[str | None, ModelResult]:
-    """Generate predictions for the test set using the best acceptable models."""
+    """Generate prediction output from stored model results.
+
+    Loads acceptable model results from disk, reads the prediction file,
+    ensembles predictions across retained models, writes a local submission
+    CSV when running outside Modal, and returns JSON for the UI.
+
+    Args:
+        **options: Runtime options containing data paths, target column,
+            metric, task, UID column, and submission configuration.
+
+    Returns:
+        A tuple containing:
+            - JSON prediction records, or None if unavailable.
+            - The first retained ModelResult used for display metrics.
+
+    Raises:
+        AppError: Propagated from CSV validation or data loading.
+        ValueError: If prediction output has an unsupported shape.
+        OSError: If model results or submission files cannot be read or written.
+    """
 
     # -------------------------------------------------------------------------
     # 1. Get y_pred_df and write submissions.csv.
@@ -147,14 +170,24 @@ def _make_prediction_df(
     y_pred: npt.ArrayLike,
     y_colname: str,
 ) -> pd.DataFrame:
-    """
-    Build a DataFrame for predictions, handling 1D or 2D (multi-output) arrays.
+    """Build a prediction DataFrame from model predictions.
 
-    Produces:
-        - One column for uid
-        - One or more prediction columns:
-            y_colname           (if 1D)
-            y_colname_1, ...    (if 2D)
+    The output contains one UID column and either one prediction column
+    for 1D predictions or multiple numbered prediction columns for 2D
+    multi-output predictions.
+
+    Args:
+        uid: Name of the UID column to include in the output.
+        x_test: Prediction input DataFrame containing the UID column.
+        y_pred: Prediction array-like object.
+        y_colname: Base name for prediction column(s).
+
+    Returns:
+        DataFrame containing UID values and predictions.
+
+    Raises:
+        ValueError: If y_pred is not 1D or 2D.
+        KeyError: If uid is not present in x_test.
     """
 
     # Convert to ndarray (defensive, and zero-op if already an array)
@@ -187,23 +220,31 @@ def _make_prediction_df(
 def _median_y_predictions(
     x_test: pd.DataFrame, model_results: list[ModelResult]
 ) -> YPredictionsType:
-    """Ensemble predictions via median (or majority vote for labels).
+    """Combine predictions from multiple trained models.
+
+    Uses median aggregation for numeric predictions and probabilities.
+    Uses simple majority vote for non-numeric class labels.
 
     Supports:
-      - Regression (1D float)
-      - Binary classification (1D float/int)
-      - Multiclass classification
-        * 1D labels (int or string) → majority/median vote
-        * 2D probabilities (n_samples, n_classes) → median per class
+        - Regression: 1D float predictions.
+        - Binary classification: 1D integer or float predictions.
+        - Multiclass classification: 1D labels or 2D probabilities.
+
+    Args:
+        x_test: Prediction input DataFrame.
+        model_results: Retained model results whose artifacts are used for
+            prediction.
 
     Returns:
-      np.ndarray with the same shape as a single model’s predictions.
+        NumPy array with the same shape as a single model's predictions.
+
+    Raises:
+        AssertionError: If stacked label predictions have an unexpected shape.
     """
     # Collect predictions from each model as numpy arrays
     preds_list: list[npt.NDArray[np.generic]] = [
         np.asarray(
             predict_model_agl_from_artifacts(x_test, mr)
-            # if mr.do_early_stop is None
             if mr.ml_framework == MLFramework.AUTOGLUON
             else predict_model_flaml_from_artifacts(x_test, mr)
         )
@@ -241,7 +282,7 @@ def _median_y_predictions(
             unique, counts = np.unique(col, return_counts=True)
             voted[j] = unique[int(np.argmax(counts))]  # simple majority vote
 
-        return voted  # cast(YPredictionsType, voted)
+        return voted
 
     # ----- Case 2: everything else: floats, probabilities, multi-output -----
     stacked_float: npt.NDArray[np.float64] = np.stack(
@@ -249,10 +290,25 @@ def _median_y_predictions(
         axis=0,
     )
     median: npt.NDArray[np.float64] = np.median(stacked_float, axis=0)
-    return median  # cast(YPredictionsType, median)
+    return median
 
 
 def _need_to_train(**options: Any) -> bool:
+    """Determine whether cached model results can be reused.
+
+    Cached results are reused only when model_results.pkl exists and the
+    stored options match the current options, ignoring RUN_ID.
+
+    Args:
+        **options: Current runtime options.
+
+    Returns:
+        True if training is required; False if cached results can be reused.
+
+    Raises:
+        OSError: If cached model results exist but cannot be read.
+        KeyError: If required options are missing.
+    """
     directory_path = Path(options[Option.DATA_DIRECTORY])
     if not (directory_path / util.MODEL_RESULTS_PKL).exists():
         return True
@@ -264,10 +320,6 @@ def _need_to_train(**options: Any) -> bool:
 
     del mr.options[Option.RUN_ID]
 
-    # util.print_modal(mr.options)
-    # util.print_modal(options)
-    # util.print_modal(_anys_equal(options, mr.options))
-
     if not _anys_equal(options, mr.options):
         return True
 
@@ -275,7 +327,18 @@ def _need_to_train(**options: Any) -> bool:
 
 
 def _new_column_name(old_names: Iterable[str] | list[str], new_name: str) -> str:
-    """ " xxx"""
+    """Return a non-conflicting column name.
+
+    If new_name already exists, alternately prefixes and suffixes underscores
+    until the generated name is unique.
+
+    Args:
+        old_names: Existing column names.
+        new_name: Desired column name.
+
+    Returns:
+        A column name that does not appear in old_names.
+    """
     before_after: bool = True
     while new_name in old_names:
         new_name = f"_{new_name}" if before_after else f"{new_name}_"
@@ -286,9 +349,20 @@ def _new_column_name(old_names: Iterable[str] | list[str], new_name: str) -> str
 def _process_tasks(
     tasks: list[_TrainingTaskType],
     train_function: Callable[..., ModelResult],
-    # qty_of_concurrent_jobs: int,
 ) -> list[ModelResult]:
-    """Run training tasks in parallel via joblib."""
+    """Run training tasks in parallel.
+
+    Args:
+        tasks: Training task tuples containing data, training parameters,
+            and runtime options.
+        train_function: Training function to execute for each task.
+
+    Returns:
+        List of ModelResult objects returned by train_function.
+
+    Raises:
+        Exception: Propagates exceptions raised by train_function or joblib.
+    """
     jobs = [
         delayed(train_function)(
             x_train_use,
@@ -322,8 +396,26 @@ def _process_tasks(
     )
 
 
-def _train(**options: Any) -> Any:
-    """Train models in parallel across imputation strategies."""
+def _train(**options: Any) -> dict[str, Any]:
+    """Train and persist acceptable model results.
+
+    Infers and validates options, skips training when reusable cached results
+    exist, otherwise trains candidate AutoGluon/FLAML models, scores them,
+    retains acceptable models, saves model_results.pkl, and removes unused
+    artifacts.
+
+    Args:
+        **options: Runtime options. If incomplete, options are inferred and
+            validated before training.
+
+    Returns:
+        Normalized runtime options.
+
+    Raises:
+        AppError: Propagated from option/data validation or CSV loading.
+        ValueError: Propagated from invalid options or downstream training setup.
+        OSError: If model artifacts cannot be read, written, or removed.
+    """
 
     # Infer and validate the options.
     options, _, _, _, _ = util.infer_and_validate_options(ready_to_train=True, **options)
@@ -342,7 +434,6 @@ def _train(**options: Any) -> Any:
     data_directory: str = options[Option.DATA_DIRECTORY]
     ratio_range = util.ratio_range(**options)
     speed: int = options[Option.SPEED]
-    # stars_ok: float = util.STARS_OK[speed]
     train_file_path: str = options[Option.TRAIN_FILE_PATH]
 
     # Read the training data.
@@ -354,7 +445,18 @@ def _train(**options: Any) -> Any:
         do_ensemble: bool,
         random_seed_index: int,
     ) -> tuple[list[ModelResult], int]:
-        """Run training for a single s_strict and return scored results and a flag for s==0."""
+        """Train candidate models for one strictness batch.
+
+        Args:
+            s_stricts: Strictness values to evaluate.
+            ml_framework: Framework to train with.
+            do_ensemble: Whether framework-level ensembling is enabled.
+            random_seed_index: Index into the configured random-seed groups.
+
+        Returns:
+            A tuple containing scored model results and the next random-seed
+            group index.
+        """
         tasks: list[_TrainingTaskType] = []
         for random_seed in util.RANDOM_SEEDSSS[speed][random_seed_index]:
             for feature_pruning_threshold in util.FEATURE_PRUNINGSS[speed]:
@@ -430,17 +532,6 @@ def _train(**options: Any) -> Any:
                 pct_ok = count_ok / len(try_model_results)
                 ratios_pct_ok = util.RATIO_OK_PCTS[speed] < pct_ok
 
-                # NO!!  Get really high ratios
-                # ratios_pct_ok if both train_metric and val_metric are above 4.x stars.
-                # if not ratios_pct_ok:
-                #     metrics_excellent = sum(
-                #         [
-                #             stars_ok <= mr.train_stars and stars_ok <= mr.val_stars
-                #             for mr in try_model_results
-                #         ]
-                #     )
-                #     ratios_pct_ok = 1 <= metrics_excellent
-
                 # Assumption: larger s_strict → more regularization → lower ratio.
                 ratio_curr = float(
                     np.mean(
@@ -470,14 +561,6 @@ def _train(**options: Any) -> Any:
 
                 s_strict_curr = s_next
 
-            # ratios_pct_ok = False  # Force do_ensemble
-            # if ratios_pct_ok:
-            #     break # do_ensemble
-        # if util.ALWAYS_DO_FLAMLS_UNCONDITIONALLY[speed]:
-        #     ratios_pct_ok = False  # force it to do FLAML
-        # if ratios_pct_ok:
-        #     break
-
     # Sort the model results.
     model_results = sorted(
         model_results, key=lambda mr: (mr.cv_score_penalized, mr.cv_ratio_metric)
@@ -503,7 +586,28 @@ def _train(**options: Any) -> Any:
 
 
 def train_and_predict(user_id: str, always_train: bool = False, **options: Any) -> dict[str, Any]:
-    """Train a model and return predictions for a given user_id."""
+    """Train models as needed and return prediction results for the UI.
+
+    This is the public entry point for the train-and-predict workflow. It
+    resolves the user's data directory when options are not supplied, optionally
+    forces retraining, trains or reuses cached models, generates predictions,
+    computes data-health summaries, and returns JSON-serializable results.
+
+    Args:
+        user_id: User identifier used to locate the default data directory.
+        always_train: Whether to remove cached results and force retraining.
+        **options: Optional runtime options. If omitted, DATA_DIRECTORY is
+            inferred from user_id.
+
+    Returns:
+        Dictionary containing status, display metrics, feature importances,
+        validation diagnostics, predictions, and data-health summaries.
+
+    Raises:
+        AppError: If user-provided files, schema, options, or data are invalid.
+        ValueError: If options are invalid or prediction shapes are unsupported.
+        OSError: If files or model artifacts cannot be read, written, or removed.
+    """
     start_time = time.time()
     if not options:
         # options: dict[str, Any] = {Option.DATA_DIRECTORY: os.path.join(util.USERS_DIR, user_id)}
@@ -535,7 +639,6 @@ def train_and_predict(user_id: str, always_train: bool = False, **options: Any) 
     df, _ = util.read_xy(options[Option.TEST_FILE_PATH])
     x_test_health = build_column_health_summary(df)
 
-    # _log_modal_memory("final")
     util.print_both(f"Time for train_and_predict({user_id}) {time.time() - start_time}")
 
     return {
@@ -558,7 +661,6 @@ def train_and_predict(user_id: str, always_train: bool = False, **options: Any) 
         ),
         "validation_stability": model_result.validation_stability,
         "baseline_comparison": model_result.baseline_comparison,
-        # "sensitivity_summary": model_result.sensitivity_summary,
         "segmented_performance": model_result.segmented_performance,
         "y_predictions": y_predictions,
         "x_train_health": x_train_health.to_json(orient="records"),

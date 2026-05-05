@@ -61,20 +61,21 @@ def _cap_choice_seq(
     v_min: float | None = None,
     v_max: float | None = None,
 ) -> list[TNum]:
-    """
-    Only needed for FLAML, not AGL.  ChatGPT has all sorts of good reasons why FLAML inherently
-    needs these caps, but AGL does not.  With more time, FLAML just keeps trying deeper trees with
-    the objective of getting the best training metric possible (e.g. overfitting).  AGL does not
-    have this problem.  Note that there is also special limits of processing time for FLAML in
-    trainers.py._train_parameters().
+    """Clamp numeric values into a bounded range.
 
-    Clamp numeric choice lists into [v_min, v_max].
+    Each value is clipped to the interval [v_min, v_max] (if provided),
+    preserving the original numeric type (int or float).
 
-    Assumptions (true in make_hp_spaces_flaml):
-      - values is always a list[int] or list[float].
-      - We return a list of the same numeric type (int -> int, float -> float).
+    This is primarily used for FLAML to prevent unbounded model growth
+    when search budgets are large.
 
-    This keeps mypy/pyright/pylint happy and fits TuneParam usage.
+    Args:
+        values: List of numeric values (int or float).
+        v_min: Optional lower bound.
+        v_max: Optional upper bound.
+
+    Returns:
+        List of clamped values with original types preserved.
     """
     out: list[TNum] = []
 
@@ -169,20 +170,30 @@ BASE: Dict[str, Dict[str, Any]] = {
 # All helpers assume s ∈ [0,1] and behave *smoothly* in s (no cliffs).
 # ============================================================================
 def _clip_lr(x: float) -> float:
-    """Clip learning rate to a reasonable band and round."""
+    """Clamp and round a learning rate.
+
+    Args:
+        x: Raw learning rate value.
+
+    Returns:
+        Learning rate clipped to [0.005, 0.2] and rounded.
+    """
     return max(0.005, min(0.2, round(x, 4)))
 
 
 def _subsamp_pair(base: float, s: float, floor_: float) -> list[float]:
     """Row/feature subsampling choices.
 
-    As s increases, we allow more aggressive subsampling but never go
-    below `floor_`.
+    This introduces stochasticity (via subsampling) to reduce overfitting,
+    with stronger effects at higher strictness.
 
-    Example:
-        base = 0.9, floor_ = 0.3
-        s=0.0 -> {0.8, 0.9}
-        s=1.0 -> {0.6, 0.9}
+    Args:
+        base: Baseline subsampling value.
+        s: Strictness parameter in [0, 1].
+        floor_: Minimum allowable subsampling.
+
+    Returns:
+        Sorted list of subsampling candidates.
     """
     s = float(max(0.0, min(1.0, s)))
     # Up to -0.30 at s=1 (tighter subsampling)
@@ -194,11 +205,15 @@ def _subsamp_pair(base: float, s: float, floor_: float) -> list[float]:
 def _depth_choices(base: int, s: float) -> list[int]:
     """Tree depth choices that shrink smoothly with strictness.
 
-    s=0.0  -> around [base-1, base]
-    s=1.0  -> around [~0.4*base, ~0.7*base] (min 2)
+    This enforces a continuous bias toward shallower trees as strictness
+    increases, reducing overfitting without introducing hard thresholds.
 
-    This ensures that at high s, we strongly prefer shallow trees, while
-    at low s we still let the model explore deeper structures.
+    Args:
+        base: Baseline depth.
+        s: Strictness parameter in [0, 1].
+
+    Returns:
+        Sorted list of candidate depths.
     """
     s = float(max(0.0, min(1.0, s)))
 
@@ -214,11 +229,16 @@ def _depth_choices(base: int, s: float) -> list[int]:
 def _leaves_pair(base: int, s: float) -> list[int]:
     """Leaf-count choices for boosted trees.
 
-    s=0.0 -> {base, ~1.5*base}   (high capacity allowed)
-    s=1.0 -> {~0.4*base, base}   (strongly constrained)
+    This balances exploration vs. regularization:
+    - Low strictness allows larger trees (higher capacity).
+    - High strictness biases toward smaller trees.
 
-    This is symmetric: low s can explore larger models; high s
-    encourages smaller models but never collapses to a single value.
+    Args:
+        base: Baseline number of leaves.
+        s: Strictness parameter in [0, 1].
+
+    Returns:
+        Sorted list of candidate leaf counts.
     """
     s = float(max(0.0, min(1.0, s)))
 
@@ -233,11 +253,15 @@ def _leaves_pair(base: int, s: float) -> list[int]:
 def _leafsize_choices(base: int, s: float) -> list[int]:
     """Min-samples-per-leaf choices.
 
-    As s increases, we gradually force larger leaves, which smooths
-    predictions and reduces variance.
+    Larger leaf sizes smooth predictions and reduce variance. This function
+    gradually enforces that behavior as strictness increases.
 
-    s=0.0 -> {base, ~1.5*base, ~2.0*base}
-    s=1.0 -> {base, ~3.0*base, ~4.0*base}
+    Args:
+        base: Baseline minimum samples per leaf.
+        s: Strictness parameter in [0, 1].
+
+    Returns:
+        Sorted list of candidate leaf sizes.
     """
     s = float(max(0.0, min(1.0, s)))
 
@@ -251,13 +275,16 @@ def _leafsize_choices(base: int, s: float) -> list[int]:
 
 
 def _rounds_choices(s: float) -> list[int]:
-    """Boosting-iteration choices that decrease upper bound with strictness.
+    """Boosting iteration choices.
 
-    s=0.0 -> {200, 300, 450}
-    s=1.0 -> {150, 250} (via {150, 250, 250})
+    This limits ensemble size as strictness increases, encouraging simpler
+    models and earlier convergence.
 
-    This keeps iterations in a sensible band and shrinks the top end as s
-    increases, encouraging earlier stopping / simpler ensembles.
+    Args:
+        s: Strictness parameter in [0, 1].
+
+    Returns:
+        Sorted list of candidate iteration counts.
     """
     s = float(max(0.0, min(1.0, s)))
 
@@ -271,13 +298,17 @@ def _rounds_choices(s: float) -> list[int]:
 
 
 def _lr_choices(base: float, s: float) -> list[float]:
-    """Learning-rate choices scaled smoothly by strictness.
+    """Learning-rate choices scaled by strictness.
 
-    As s increases, we reduce the *target* learning rate and create
-    a small band around it.
+    Lower learning rates at higher strictness encourage more stable,
+    conservative training and reduce overfitting.
 
-    s=0.0 -> ~{0.85*base, base, 1.10*base}
-    s=1.0 -> ~{0.85*0.4*base, 0.4*base, 1.10*0.4*base}
+    Args:
+        base: Baseline learning rate.
+        s: Strictness parameter in [0, 1].
+
+    Returns:
+        Sorted list of candidate learning rates.
     """
     s = float(max(0.0, min(1.0, s)))
 
@@ -293,9 +324,15 @@ def _lr_choices(base: float, s: float) -> list[float]:
 def _l2_choices(base: float, s: float) -> list[float]:
     """L2 regularization choices.
 
-    As s increases, we center L2 around a larger value:
-        center = base * (1 + 3*s)  up to 4× at s=1
-    and then explore around that center.
+    This increases regularization strength as strictness increases,
+    helping control model complexity.
+
+    Args:
+        base: Baseline L2 value.
+        s: Strictness parameter in [0, 1].
+
+    Returns:
+        Sorted list of candidate L2 values.
     """
     s = float(max(0.0, min(1.0, s)))
 
@@ -310,13 +347,17 @@ def _l2_choices(base: float, s: float) -> list[float]:
 
 
 def _l1_duo(base: float, s: float) -> list[float]:
-    """L1-style regularization or penalties.
+    """L1-style regularization choices.
 
-    For s>0 and base>0, we scale base upward with s.
-    If base==0, we allow turning L1 on gradually from zero.
+    This allows L1 penalties to scale with strictness, enabling stronger
+    sparsity and feature selection at higher strictness levels.
 
-    s=0.0 -> {base}
-    s=1.0 -> ~{base, 1.75*base}
+    Args:
+        base: Baseline L1 value.
+        s: Strictness parameter in [0, 1].
+
+    Returns:
+        List of candidate L1 values.
     """
     s = float(max(0.0, min(1.0, s)))
     mult = 1.0 + 0.75 * s  # up to 1.75×
@@ -331,16 +372,26 @@ def _l1_duo(base: float, s: float) -> list[float]:
 # FLAML typed wrapper (for tune.choice)
 # ============================================================================
 class TuneParam(TypedDict):
-    """TypedDict used to satisfy FLAML's custom_hp format."""
+    """FLAML hyperparameter domain wrapper.
+
+    Attributes:
+        domain: Underlying FLAML search space (e.g., tune.choice).
+    """
 
     domain: object
 
 
 def _ch(vals: Sequence[object]) -> TuneParam:
-    """
-    Wrap a sequence of candidate values in FLAML's tune.choice.
+    """Wrap values in a FLAML choice domain.
 
-    We keep the TypedDict wrapper to make mypy/pyright happy.
+    This exists purely to satisfy FLAML's expected TypedDict format
+    while keeping static type checkers happy.
+
+    Args:
+        vals: Sequence of candidate values.
+
+    Returns:
+        TuneParam containing a tune.choice domain.
     """
     # No easy way to avoid the generic 'object' here.
     return {"domain": cast(object, tune.choice(list(vals)))}
@@ -354,18 +405,26 @@ def make_hp_spaces_agl(
     *,
     include_xgb: bool = True,
 ) -> Dict[str, Dict[str, Any]]:
-    """Build AutoGluon Tabular hyperparameter spaces based on strictness s.
+    """Construct AutoGluon hyperparameter spaces from strictness.
 
-    The returned dict has the form:
-        {
-            "CAT": {... space ...},
-            "GBM": {... space ...},
-            "XGB": {... space ...},  # only if include_xgb is True
-            "RF":  {... space ...},
-            "XT":  {... space ...},
-        }
+    The strictness parameter ``s`` ∈ [0, 1] controls the trade-off between
+    model capacity and regularization:
 
-    where each inner dict is a valid AGL hyperparameter search space.
+        - Lower s → larger models, weaker regularization
+        - Higher s → smaller models, stronger regularization
+
+    The returned dictionary maps model types to AutoGluon-compatible
+    hyperparameter search spaces.
+
+    Args:
+        s: Strictness parameter in [0, 1].
+        include_xgb: Whether to include XGBoost search space.
+
+    Returns:
+        Dictionary of model → hyperparameter space mappings.
+
+    Raises:
+        ValueError: If input assumptions are violated (should not occur under normal usage).
     """
     s = float(max(0.0, min(1.0, s)))
     b = BASE
@@ -465,25 +524,28 @@ def make_hp_spaces_agl(
 # FLAML hyperparameter spaces
 # ============================================================================
 def make_hp_spaces_flaml(s: float) -> Dict[str, Dict[str, TuneParam]]:
-    """Build FLAML AutoML custom_hp spaces based on strictness s.
+    """Construct FLAML hyperparameter spaces from strictness.
 
-    Returns a dict:
-        {
-            "catboost": {...},
-            "lgbm": {...},
-            "xgboost": {...},
-            "rf": {...},
-            "extra_tree": {...},
-            "histgb": {...},  # scikit-learn HistGradientBoosting
-        }
-    suitable for passing as AutoML(..., custom_hp=...).
+    Produces FLAML-compatible ``custom_hp`` dictionaries where all
+    hyperparameters are expressed as ``tune.choice`` domains.
 
-    Notes:
-      * We keep your existing strictness logic via _rounds_choices/_depth_choices/etc.
-      * We additionally clamp key capacity knobs (n_estimators, depth, num_leaves, etc.)
-        to conservative global caps so that very large time budgets cannot grow single
-        models arbitrarily large. Extra time should go into more trials, not much
-        deeper/wider trees.
+    The strictness parameter ``s`` ∈ [0, 1] smoothly controls:
+
+        - Model capacity (depth, estimators, leaves)
+        - Regularization (L1/L2, min leaf size)
+        - Subsampling intensity
+
+    Additionally, all major capacity parameters are clamped to
+    conservative global limits to prevent excessive model growth.
+
+    Args:
+        s: Strictness parameter in [0, 1].
+
+    Returns:
+        Dictionary of model → FLAML hyperparameter space mappings.
+
+    Raises:
+        ValueError: If input assumptions are violated (should not occur under normal usage).
     """
     s = float(max(0.0, min(1.0, s)))
     b = BASE

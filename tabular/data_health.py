@@ -127,34 +127,33 @@ def build_column_health_summary(
                 "Row_Qty": n_rows,
                 #
                 "Missing_Qty": missing_count,
-                "Missing_Pct": missing_pct,  # round(missing_pct, 4),
+                "Missing_Pct": missing_pct,
                 #
                 "Unique_Qty": unique_count,
-                "Unique_Pct": unique_pct,  # round(unique_pct, 4),
+                "Unique_Pct": unique_pct,
                 #
                 "Is_Constant": is_constant,
                 "Is_Almost_Constant": is_almost_constant,
                 #
                 "Most_Frequent_Value": most_frequent_value,
                 "Most_Frequent_Qty": most_frequent_count,
-                "Most_Frequent_Pct": most_frequent_pct,  # round(most_frequent_pct, 4),
+                "Most_Frequent_Pct": most_frequent_pct,
                 #
                 "Classes_Qty": n_classes,
                 "Majority_Class": majority_class,
-                "Majority_Pct": majority_pct,  # round(majority_pct, 4),
+                "Majority_Pct": majority_pct,
                 "Minority_Class": minority_class,
-                "Minority_Pct": minority_pct,  # round(minority_pct, 4),
+                "Minority_Pct": minority_pct,
                 #
                 "Min": col_min,
                 "Median": median,
-                "Mean": mmean,  #  if mmean is None else round(mmean, 6),
+                "Mean": mmean,
                 "Max": col_max,
-                "StdDev": std,  #  if std is None else round(std, 6),
+                "StdDev": std,
             }
         )
 
-    # Index by column name so it is easy to inspect in logs/debugging.
-    return pd.DataFrame(summaries)  # .set_index("column")
+    return pd.DataFrame(summaries)
 
 
 def _derive_column_severity_and_messages(

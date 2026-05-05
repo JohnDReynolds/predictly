@@ -89,8 +89,15 @@ users_vol = modal.Volume.from_name("predictly-users", create_if_missing=True)
 # Helpers
 # -----------------------------------------------------------------------------
 def _delete_old_subdirs(do_delete: bool = False) -> None:
-    """
-    Delete immediate sub-directories under `base_dir` whose mtime is older than `max_age_seconds`.
+    """Delete stale per-user directories from the Modal Volume.
+
+    Scans immediate subdirectories under ``util.USERS_DIR`` and removes those
+    older than ``util.MODAL_HOURS_TO_KEEP_USER_DIRECTORIES`` when deletion is
+    enabled. When deletion is disabled, logs what would be removed.
+
+    Args:
+        do_delete: If True, delete stale directories. If False, only log
+            candidates for deletion.
     """
     base_dir = Path(util.USERS_DIR)
 
@@ -129,18 +136,38 @@ def _delete_old_subdirs(do_delete: bool = False) -> None:
 
 
 def _epoch_now() -> int:
-    """Return current epoch seconds as int."""
+    """Return the current Unix epoch time in seconds.
+
+    Returns:
+        Current epoch timestamp as an integer.
+    """
     return int(time.time())
 
 
 def _get_predict():
+    """Import and return the prediction module lazily.
+
+    Delays importing heavy ML dependencies until the training worker actually
+    needs them.
+
+    Returns:
+        The ``tabular.predict`` module.
+    """
     import tabular.predict as predict
 
     return predict
 
 
 def _get_user_options(user_id: str) -> dict[str, Any] | None:
-    """Load options.json for user_id, if present and valid."""
+    """Load saved options for a user.
+
+    Args:
+        user_id: Predictly user/job id.
+
+    Returns:
+        Options dictionary if ``options.json`` exists and contains a JSON
+        object; otherwise None.
+    """
     path = _options_path(user_id)
     if not os.path.exists(path):
         return None
@@ -153,7 +180,14 @@ def _get_user_options(user_id: str) -> dict[str, Any] | None:
 
 
 def _http_status_for_app_error(error_type: str | None) -> int:
-    """Map known AppError types to HTTP status codes."""
+    """Map an application error type to an HTTP status code.
+
+    Args:
+        error_type: Stable application error code.
+
+    Returns:
+        HTTP status code appropriate for the error type.
+    """
     mapping: dict[str, int] = {
         # State conflicts / ordering issues:
         "no_user_directory": 409,
@@ -172,18 +206,35 @@ def _http_status_for_app_error(error_type: str | None) -> int:
 
 
 def _log_error(user_id: str, message: str, error_type: str) -> dict[str, str]:
-    """Log a structured error line (Cloud Logging friendly)."""
+    """Log and return a structured error payload.
+
+    Args:
+        user_id: Predictly user/job id.
+        message: Human-readable error message.
+        error_type: Stable machine-readable error code.
+
+    Returns:
+        Error payload suitable for API responses and Cloud Logging.
+    """
     error = {"status": "error", "user_id": user_id, "error_type": error_type, "message": message}
     util.print_modal(json.dumps(error))
     return error
 
 
 def _modal_dir_exists(path: str | Path, *, retries: int = 30, delay: float = 2.0) -> bool:
-    """Return True if a directory exists on a Modal Volume, with small retries.
+    """Check whether a Modal Volume directory exists, with retries.
 
-    Modal volumes can lag slightly in warm containers or across invocations,
-    so a single is_dir() check can occasionally report False even though the
-    directory is actually there.
+    Modal Volumes can lag slightly in warm containers or across invocations,
+    so a single ``is_dir()`` check can occasionally report False even when the
+    directory exists.
+
+    Args:
+        path: Directory path to check.
+        retries: Maximum number of checks before returning False.
+        delay: Seconds to sleep between checks.
+
+    Returns:
+        True if the directory exists within the retry window; otherwise False.
     """
     directory = Path(path)
     for _ in range(retries):
@@ -197,12 +248,27 @@ def _modal_dir_exists(path: str | Path, *, retries: int = 30, delay: float = 2.0
 
 
 def _options_path(user_id: str) -> str:
-    """Return per-user options.json path."""
+    """Return the path to a user's options file.
+
+    Args:
+        user_id: Predictly user/job id.
+
+    Returns:
+        Absolute path to the user's ``options.json`` file.
+    """
     return os.path.join(_user_directory(user_id), util.OPTIONS_FILE_NAME)
 
 
 def _read_json(path: str) -> dict[str, Any] | None:
-    """Read JSON dict from path, returning None if missing/invalid."""
+    """Read a JSON object from disk.
+
+    Args:
+        path: File path to read.
+
+    Returns:
+        Parsed JSON dictionary if the file exists and contains a JSON object;
+        otherwise None.
+    """
     if not os.path.exists(path):
         return None
     try:
@@ -214,12 +280,16 @@ def _read_json(path: str) -> dict[str, Any] | None:
 
 
 def _set_user_options(user_id: str, options: dict[str, Any]) -> None:
-    """Overwrite options.json for user_id."""
+    """Persist options for a user.
+
+    Args:
+        user_id: Predictly user/job id.
+        options: Options dictionary to write to ``options.json``.
+
+    Raises:
+        OSError: If the options file cannot be written.
+    """
     path = _options_path(user_id)
-
-    # util.print_modal("_set_user_options()")
-    # util.print_modal(options["uid_column_name"])
-
     with open(path, "w", encoding="utf-8") as handle:
         json.dump(options, handle, ensure_ascii=False, indent=2)
     users_vol.commit()
@@ -228,7 +298,17 @@ def _set_user_options(user_id: str, options: dict[str, Any]) -> None:
 def _status_payload(
     state: str, *, message: str = "", updated_at_epoch: int | None = None
 ) -> dict[str, Any]:
-    """Build a stable state payload for _train_job_state.json."""
+    """Build a stable training-job state payload.
+
+    Args:
+        state: Durable job state value.
+        message: Optional status or error message.
+        updated_at_epoch: Optional timestamp override. If omitted, uses the
+            current epoch time.
+
+    Returns:
+        Dictionary suitable for writing to ``_train_job_state.json``.
+    """
     return {
         "state": state,
         "updated_at_epoch": _epoch_now() if updated_at_epoch is None else int(updated_at_epoch),
@@ -237,21 +317,18 @@ def _status_payload(
 
 
 def _train_and_predict_base(user_id: str) -> Dict[str, str]:
-    """Background async training + prediction.
+    """Run asynchronous training and prediction for a user.
 
-    This function is spawned (fire-and-forget) by the web app after a successful
-    claim_train_slot_remote() call.
+    This function is spawned by the web app after a successful
+    ``claim_train_slot_remote()`` call. It updates durable job state, writes
+    final results, and uses a ``run_id`` guard so stale workers cannot overwrite
+    newer runs.
 
-    Key correctness rule (race guard):
-      - We read the current run_id from _train_job_state.json at the start.
-      - Every write we perform (RUNNING, FAILED, SUCCEEDED, result) is tagged
-        with that same run_id.
-      - Before writing, we re-read state to ensure the run_id still matches.
-        If it doesn't, we stop writing to avoid overwriting a newer run.
+    Args:
+        user_id: Predictly user/job id.
 
     Returns:
-        The same dict payload as predict.train_and_predict(user_id).
-        (Return value is mainly for logs; the UI reads result from the Volume.)
+        Training/prediction result payload, or a structured error payload.
     """
     if not user_id:
         return _NO_USER_ID
@@ -265,7 +342,11 @@ def _train_and_predict_base(user_id: str) -> Dict[str, str]:
     users_vol.commit()  # commit to disk
 
     def _load_current_run_id() -> int:
-        """Read run_id from state; if missing, create one and persist it."""
+        """Read or create the current durable run id.
+
+        Returns:
+            Current run id from the state file, or a newly persisted run id.
+        """
         state0 = _read_json(state_path) or {}
         run_id0 = state0.get("run_id")
         if isinstance(run_id0, int):
@@ -281,12 +362,28 @@ def _train_and_predict_base(user_id: str) -> Dict[str, str]:
         return new_run_id
 
     def _still_our_run(run_id: int) -> bool:
-        """Return True if the state file still refers to the same run_id."""
+        """Check whether the state file still belongs to this worker.
+
+        Args:
+            run_id: Run id claimed by this worker.
+
+        Returns:
+            True if the durable state still contains the same run id.
+        """
         cur = _read_json(state_path) or {}
         return isinstance(cur.get("run_id"), int) and int(cur["run_id"]) == int(run_id)
 
     def _write_state_if_current(run_id: int, state: str, message: str) -> bool:
-        """Write state only if run_id still matches; return True if written."""
+        """Write job state only if this worker still owns the run.
+
+        Args:
+            run_id: Run id claimed by this worker.
+            state: New durable state value.
+            message: Optional status or error message.
+
+        Returns:
+            True if the state was written; False if the run was superseded.
+        """
         if not _still_our_run(run_id):
             return False
         payload = _status_payload(state, message=message)
@@ -370,17 +467,39 @@ def _train_and_predict_base(user_id: str) -> Dict[str, str]:
 
 
 def _train_job_result_path(user_id: str) -> str:
-    """Return per-user path for async training result JSON."""
+    """Return the path to a user's async training result file.
+
+    Args:
+        user_id: Predictly user/job id.
+
+    Returns:
+        Absolute path to ``_train_job_result.json``.
+    """
     return os.path.join(_user_directory(user_id), _TRAIN_JOB_RESULT_FILENAME)
 
 
 def _train_job_state_path(user_id: str) -> str:
-    """Return per-user path for async training state JSON."""
+    """Return the path to a user's async training state file.
+
+    Args:
+        user_id: Predictly user/job id.
+
+    Returns:
+        Absolute path to ``_train_job_state.json``.
+    """
     return os.path.join(_user_directory(user_id), _TRAIN_JOB_STATE_FILENAME)
 
 
 def _training_files_exist(user_id: str) -> tuple[bool, str]:
-    """Check required train/test files exist for this user."""
+    """Check whether the required training and prediction files exist.
+
+    Args:
+        user_id: Predictly user/job id.
+
+    Returns:
+        Tuple of ``(ok, message)``. ``ok`` is True only when both required
+        CSV files exist; ``message`` describes the missing file when False.
+    """
     directory = _user_directory(user_id)
     train_path = os.path.join(directory, util.TRAIN_FILE_NAME)
     test_path = os.path.join(directory, util.TEST_FILE_NAME)
@@ -392,6 +511,12 @@ def _training_files_exist(user_id: str) -> tuple[bool, str]:
 
 
 def _unlink(directory: str, file_name: str | Iterable[str]) -> None:
+    """Remove one or more files from a directory and commit the Volume.
+
+    Args:
+        directory: Directory containing the files.
+        file_name: File name or iterable of file names to remove.
+    """
     base = Path(directory)
     names = (file_name,) if isinstance(file_name, str) else file_name
     for name in names:
@@ -400,17 +525,17 @@ def _unlink(directory: str, file_name: str | Iterable[str]) -> None:
 
 
 def _user_directory(user_id: str, *, ok_to_mkdir: bool = False) -> str:
-    """Return the per-user directory path inside the container.
+    """Return the per-user directory path inside the Modal Volume.
 
     Args:
-        user_id: Predictly job/user id.
-        ok_to_mkdir: If True, create directory if missing.
+        user_id: Predictly user/job id.
+        ok_to_mkdir: If True, create the directory if it is missing.
 
     Returns:
         Absolute directory path inside the Volume mount.
 
     Raises:
-        ValueError: If directory does not exist after retries.
+        ValueError: If the directory does not exist after retries.
     """
     directory = Path(util.USERS_DIR) / user_id
 
@@ -424,7 +549,16 @@ def _user_directory(user_id: str, *, ok_to_mkdir: bool = False) -> str:
 
 
 def _write_json(path: str, payload: dict[str, Any]) -> None:
-    """Write JSON payload to path (overwrite)."""
+    """Write a JSON payload to disk and commit the Modal Volume.
+
+    Args:
+        path: Destination file path.
+        payload: JSON-serializable dictionary to write.
+
+    Raises:
+        OSError: If the file cannot be written.
+        TypeError: If the payload contains non-JSON-serializable values.
+    """
     with open(path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False, indent=2)
     users_vol.commit()
@@ -446,12 +580,21 @@ def claim_train_slot_remote(
     speed: int,
     uid_column_name: str,
 ) -> Dict[str, Any]:
-    """Claim the right to start a new async training run for this user_id.
+    """Claim the right to start a new asynchronous training run.
 
-    Policy:
-      - ALWAYS rerun training when requested, unless a job is already QUEUED/RUNNING.
-      - Duplicate-click protection: only one request can claim; others return current state.
-      - On claim: write QUEUED durably and stamp a new run_id.
+    Only one QUEUED or RUNNING job may exist for a user at a time. A successful
+    claim persists selected options, writes durable QUEUED state, and stamps a
+    new run id.
+
+    Args:
+        user_id: Predictly user/job id.
+        task: User-selected task type.
+        metric: User-selected metric.
+        speed: Training speed index.
+        uid_column_name: Optional user-selected unique id column name.
+
+    Returns:
+        Structured API payload indicating whether the claim succeeded.
     """
     if not user_id:
         return _NO_USER_ID
@@ -523,22 +666,17 @@ def claim_train_slot_remote(
     volumes={util.USERS_DIR: users_vol},
 )
 def get_train_job_result_remote(user_id: str) -> Dict[str, Any]:
-    """Get async training result for user_id if ready.
+    """Return the asynchronous training result if it is ready.
 
-    IMPORTANT:
-      - This function reads from the Volume, so it calls users_vol.reload() first.
+    Reads from the Modal Volume after calling ``users_vol.reload()`` so warm
+    containers do not serve stale snapshots.
+
+    Args:
+        user_id: Predictly user/job id.
 
     Returns:
-        If result exists:
-            The full training result dict (same payload as Phase 1 /ui/train).
-
-        If not ready:
-            {
-              "status": "error",
-              "error_type": "not_ready",
-              "message": "Result is not ready.",
-              "state": "QUEUED"|"RUNNING"|"FAILED"|"UNKNOWN"
-            }
+        If ready, the full training result payload. Otherwise, a structured
+        ``not_ready`` error payload including the current durable state.
     """
     if not user_id:
         return _NO_USER_ID
@@ -575,51 +713,6 @@ def get_train_job_result_remote(user_id: str) -> Dict[str, Any]:
         return _log_error(user_id, str(exc), error_type="result_read_failed")
 
 
-# @app.function(
-#     cpu=0.125,  # Uses 0.04, Startup 0.1 to 0.3, called every 6 seconds
-#     memory=256,  # Uses 145
-#     image=control_image,
-#     volumes={util.USERS_DIR: users_vol},
-# )
-# def get_train_job_status_remote(user_id: str) -> Dict[str, Any]:
-#     """Get durable async training status for a user_id.
-
-#     IMPORTANT:
-#       - This function reads from the Volume, so it calls users_vol.reload() first.
-
-#     Returns:
-#         {
-#           "status": "ok",
-#           "state": "QUEUED"|"RUNNING"|"SUCCEEDED"|"FAILED"|"UNKNOWN",
-#           "updated_at_epoch": <int>,
-#           "message": <optional str>
-#         }
-#     """
-#     if not user_id:
-#         return _NO_USER_ID
-
-#     try:
-#         users_vol.reload()
-
-#         directory = Path(util.USERS_DIR) / user_id
-#         if not _modal_dir_exists(directory):
-#             return {"status": "ok", "state": _STATE_UNKNOWN, "updated_at_epoch": 0, "message": ""
-
-#         state = _read_json(_train_job_state_path(user_id))
-#         if not state:
-#             return {"status": "ok", "state": _STATE_UNKNOWN, "updated_at_epoch": 0, "message": ""
-
-#         # util.log_modal_memory("finish get_train_job_status_remote() reserved memory=256")
-#         return {
-#             "status": "ok",
-#             "state": str(state.get("state", _STATE_UNKNOWN)),
-#             "updated_at_epoch": int(state.get("updated_at_epoch", 0) or 0),
-#             "message": str(state.get("message", "") or ""),
-#         }
-#     except Exception as exc:
-#         return _log_error(user_id, str(exc), error_type="status_read_failed")
-
-
 @app.function(
     cpu=0.125,  # Uses 0.04, Startup 0.1 to 0.3, called every 6 seconds
     memory=256,  # Uses 145
@@ -627,19 +720,18 @@ def get_train_job_result_remote(user_id: str) -> Dict[str, Any]:
     volumes={util.USERS_DIR: users_vol},
 )
 def get_train_job_status_remote(user_id: str) -> Dict[str, Any]:
-    """Get durable async training status for a user_id.
+    """Return durable asynchronous training status for a user.
 
-    IMPORTANT:
-      - This function reads from the Volume, so it calls users_vol.reload() first.
+    Reads from the Modal Volume after calling ``users_vol.reload()`` and also
+    converts stale QUEUED/RUNNING jobs into timeout responses based on the
+    configured speed-specific Modal timeout.
+
+    Args:
+        user_id: Predictly user/job id.
 
     Returns:
-        {
-          "status": "ok" | "error",
-          "state": "QUEUED"|"RUNNING"|"SUCCEEDED"|"FAILED"|"UNKNOWN",
-          "updated_at_epoch": <int>,
-          "message": <optional str>,
-          "error_type": <optional str>
-        }
+        Structured status payload containing state, timestamp, message, and
+        optional error details.
     """
     if not user_id:
         return _NO_USER_ID
@@ -671,10 +763,6 @@ def get_train_job_status_remote(user_id: str) -> Dict[str, Any]:
 
         # Map speed -> configured timeout minutes
         timeout_minutes = util.MODAL_TIMEOUT_MINUTES[speed]
-        # try:
-        #     timeout_minutes = util.MODAL_TIMEOUT_MINUTES[speed]
-        # except Exception:
-        #     timeout_minutes = max(util.MODAL_TIMEOUT_MINUTES)
 
         timeout_seconds = int(timeout_minutes * 60)
         cushion_seconds = 30  # Buffer so we don't race Modal timeout.  > 2 * App.POLL_INTERVAL_MS
@@ -717,10 +805,14 @@ def get_train_job_status_remote(user_id: str) -> Dict[str, Any]:
     volumes={util.USERS_DIR: users_vol},
 )
 def train_and_predict_speed0(user_id: str) -> Dict[str, Any]:
-    """Run train_and_predict for speed == 0"""
-    # util.log_modal_memory(
-    #     f"Start train_and_predict_speed0 for {user_id}, reserved memory={util.MODAL_MEMORY[0]}"
-    # )
+    """Run training and prediction using speed profile 0.
+
+    Args:
+        user_id: Predictly user/job id.
+
+    Returns:
+        Training/prediction result payload, or a structured error payload.
+    """
     return _train_and_predict_base(user_id)
 
 
@@ -732,10 +824,14 @@ def train_and_predict_speed0(user_id: str) -> Dict[str, Any]:
     volumes={util.USERS_DIR: users_vol},
 )
 def train_and_predict_speed1(user_id: str) -> Dict[str, Any]:
-    """Run train_and_predict for speed == 1"""
-    # util.log_modal_memory(
-    #     f"Start train_and_predict_speed1 for {user_id}, reserved memory={util.MODAL_MEMORY[1]}"
-    # )
+    """Run training and prediction using speed profile 1.
+
+    Args:
+        user_id: Predictly user/job id.
+
+    Returns:
+        Training/prediction result payload, or a structured error payload.
+    """
     return _train_and_predict_base(user_id)
 
 
@@ -748,17 +844,24 @@ def train_and_predict_speed1(user_id: str) -> Dict[str, Any]:
 def upload_file_remote(
     user_id: str, file_name: str, file_bytes: bytes
 ) -> Tuple[Dict[str, Any], int]:
-    """Store a user file in the Modal Volume and return inferred metadata.
+    """Store a user CSV file and return inferred metadata.
 
-    This mirrors the legacy Flask upload flow.
+    Mirrors the legacy Flask upload flow. Training-file uploads return a
+    training preview. Prediction-file uploads validate train/test compatibility
+    and return inferred task, metric, target column, UID candidates, and preview
+    data.
 
     Args:
-        user_id: Predictly user/job ID.
-        file_name: "train.csv" or "test.csv".
-        file_bytes: File content.
+        user_id: Predictly user/job id.
+        file_name: File to upload. Must be ``train.csv`` or ``test.csv``.
+        file_bytes: Raw file content.
 
     Returns:
-        (payload, http_status_code)
+        Tuple of ``(payload, http_status_code)``.
+
+    Raises:
+        AppError: Caught internally and converted to a structured API response.
+        OSError: Caught internally and converted to a structured API response.
     """
     if file_name not in (util.TRAIN_FILE_NAME, util.TEST_FILE_NAME):
         return (
@@ -821,7 +924,6 @@ def upload_file_remote(
                 response["valid_task_metrics"],
                 response["unique_columns"],
                 response["data"],
-                # response["data_health"],
                 response["data_description"],
             ) = util.infer_and_validate_options(ready_to_train=False, **options)
 
@@ -848,5 +950,4 @@ def upload_file_remote(
         if isinstance(exc, AppError):
             response["data"] = exc.data
             response["data_description"] = exc.data_description
-            # response["data_health"] = exc.data_health
         return response, status_code

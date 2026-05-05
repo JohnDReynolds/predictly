@@ -164,15 +164,14 @@ _DATASET_TO_FILENAME: dict[str, str] = {
 class TrainBody(BaseModel):
     """Request body for training endpoints.
 
-    Used by:
-      - POST /ui/train        (sync)
-      - POST /ui/train_async  (async)
+    Used by synchronous and asynchronous training routes.
 
     Attributes:
         user_id: Predictly job/user identifier.
+        task: Task type selected by the user.
         metric: Metric name selected by the user.
-        uid_column_name: Optional unique-id column name ("" allowed).
-        speed: Currently only 0.
+        speed: Training speed preset.
+        uid_column_name: Optional unique-id column name. Empty string is allowed.
     """
 
     user_id: str
@@ -183,7 +182,11 @@ class TrainBody(BaseModel):
 
 
 def _missing_user_id_result() -> dict[str, Any]:
-    """Return a stable missing_user_id error in the standard UI envelope."""
+    """Build the standard missing-user-id response envelope.
+
+    Returns:
+        A UI response envelope containing a stable ``missing_user_id`` error.
+    """
     return {
         "result": {
             "status": "error",
@@ -201,10 +204,8 @@ def _missing_user_id_result() -> dict[str, Any]:
 def fastapi_app() -> FastAPI:
     """Expose the FastAPI app as a Modal web endpoint.
 
-    This function:
-      - Runs in the lightweight web_image
-      - Hosts the FastAPI app
-      - Receives all HTTP traffic from the browser/UI
+    This function runs in the lightweight web image and receives all
+    HTTP traffic from the browser/UI.
 
     Returns:
         The FastAPI application instance.
@@ -214,39 +215,24 @@ def fastapi_app() -> FastAPI:
 
 @web.post("/ui/train_async")
 def ui_train_async(body: TrainBody) -> dict[str, Any]:
-    """Start async training + prediction and return immediately.
+    """Start async training and prediction, then return immediately.
 
-    Policy:
-      - If NO job is currently running for user_id:
-          - Claim a new run in the worker (durably writes QUEUED + clears prior result)
-          - Spawn background training
-          - Return {status:"ok", state:"QUEUED", ...}
-      - If a job IS already running (QUEUED/RUNNING):
-          - Do not spawn another job (duplicate-click protection)
-          - Return the current in-flight state
-
-    Important:
-      - This endpoint does NOT block.
-      - It does NOT "queue a second job for later".
-        If the user wants a new run after completion, they call /ui/train_async again.
+    If no job is currently running for the user, this endpoint claims a new
+    run in the worker, spawns background training, and returns queued state.
+    If a job is already queued or running, it returns the current in-flight
+    state without spawning another job.
 
     Args:
-        body: Parsed JSON request body (TrainBody).
+        body: Parsed JSON request body.
 
     Returns:
-        Success (always):
-            {
-              "result": {
-                "status": "ok",
-                "state": "QUEUED" | "RUNNING",
-                "user_id": "<user_id>",
-                "updated_at_epoch": <int>,
-                "message": <optional>
-              }
-            }
+        Standard UI response envelope containing either queued/running state
+        or a structured error payload.
 
-        Error:
-            { "result": {"status":"error","error_type":...,"message":...} }
+    Raises:
+        Exception: Propagates unexpected Modal worker lookup, remote-call, or
+            spawn failures. Normal user/data errors are returned inside the
+            response envelope instead of raised.
     """
     user_id = body.user_id.strip()
     if not user_id:
@@ -285,27 +271,18 @@ def ui_train_async(body: TrainBody) -> dict[str, Any]:
 
 @web.get("/ui/train_result/{user_id}")
 def ui_train_result(user_id: str) -> dict[str, Any]:
-    """Get async training result if ready.
+    """Return the async training result if it is ready.
 
     Args:
         user_id: Predictly job/user identifier.
 
     Returns:
-        If ready (SUCCEEDED):
-            { "result": { ... same payload as Phase 1 /ui/train result ... } }
+        Standard UI response envelope containing either the completed training
+        result or a structured ``not_ready`` / worker error payload.
 
-        If not ready:
-            {
-              "result": {
-                "status": "error",
-                "error_type": "not_ready",
-                "message": "...",
-                "state": "QUEUED"|"RUNNING"|"FAILED"|"UNKNOWN"
-              }
-            }
-
-        If worker returns an error:
-            { "result": {"status":"error","error_type":...,"message":...} }
+    Raises:
+        Exception: Propagates unexpected Modal remote-call failures. Expected
+            polling states such as ``not_ready`` are returned in the envelope.
     """
     user_id = user_id.strip()
     if not user_id:
@@ -317,24 +294,21 @@ def ui_train_result(user_id: str) -> dict[str, Any]:
 
 @web.get("/ui/train_status/{user_id}")
 def ui_train_status(user_id: str) -> dict[str, Any]:
-    """Get durable async training status (pollable).
+    """Return durable async training status for polling.
 
-    This endpoint is safe to call repeatedly (polling).
-    The worker function should read from the persistent Volume state.
+    This endpoint is safe to call repeatedly. The worker reads state from
+    persistent Volume storage.
 
     Args:
         user_id: Predictly job/user identifier.
 
     Returns:
-        {
-          "result": {
-            "status": "ok",
-            "state": "QUEUED"|"RUNNING"|"SUCCEEDED"|"FAILED"|"UNKNOWN",
-            "updated_at_epoch": <int>,
-            "message": <optional str>
-          }
-        }
-        or an error envelope { "result": {...} }.
+        Standard UI response envelope containing current job state, timestamp,
+        and optional message/error details.
+
+    Raises:
+        Exception: Propagates unexpected Modal remote-call failures. Missing
+            or unknown job state is returned in the envelope instead of raised.
     """
     user_id = user_id.strip()
     if not user_id:
@@ -350,24 +324,25 @@ async def ui_upload(
     dataset_kind: str = Form(...),
     file: UploadFile = File(...),
 ) -> dict[str, Any]:
-    """Upload a training or test CSV file.
+    """Upload a training or prediction CSV file.
 
-    Behavior:
-      - Validates dataset_kind -> maps to "train.csv" or "test.csv"
-      - Reads file bytes
-      - Calls worker: upload_file_remote(user_id, file_name, file_bytes)
-      - Returns payload wrapped in { "result": ... } with http_status for debugging
+    Validates ``dataset_kind``, reads the uploaded file bytes, forwards the
+    file to the worker, and wraps the worker payload in the standard UI
+    response envelope.
 
     Args:
         user_id: Predictly job/user identifier.
-        dataset_kind: One of {"training", "train", "test"}.
+        dataset_kind: One of ``"training"``, ``"train"``, or ``"test"``.
         file: Uploaded CSV file.
 
     Returns:
-        {
-          "result": <payload returned by upload_file_remote>,
-          "http_status": <int>
-        }
+        Standard UI response envelope containing the worker payload and,
+        when available, the worker HTTP-style status code.
+
+    Raises:
+        Exception: Propagates unexpected upload read failures or Modal
+            remote-call failures. Expected validation errors are returned in
+            the response envelope instead of raised.
     """
     safe_filename = _DATASET_TO_FILENAME.get(dataset_kind.strip().lower())
     if not safe_filename:

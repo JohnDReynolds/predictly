@@ -51,27 +51,15 @@ from pandas import Series
 from pandas.api.types import is_bool_dtype, is_numeric_dtype
 import psutil
 
-
-## This will make sure that all transform outputs are dataframes, not numpy arrays.  I'm not sure
-## why this is still needed.  Try to get rid of it.  If you are able to get rid of it, then try
-## importing Option in app.py so you can get rid of those ugly _OPTION_* constants.
-# from sklearn import set_config
-# set_config(transform_output="pandas")
-
 # Constants General
 DEFAULT_SPEED = 0  # 0=fast, 1=medium, 2=slow
-DO_DEBUG = True
-DO_MODAL = False  # Set to True before building Modal
+DO_DEBUG = False
+DO_MODAL = True  # Set to True before building Modal
 ENCODING = "utf-8"
 _DEVNULL: TextIO = open(os.devnull, "w", encoding=ENCODING)  # intentionally never closed
 FLOAT_MAX = np.sqrt(np.float32(np.finfo(np.float32).max)) - 2  # Sqrt and a tolerance of 2.
 FLOAT_MIN = -FLOAT_MAX
 HIGHER_IS_BETTER_METRICS = {"accuracy", "balanced_accuracy", "r2", "roc_auc", "pr_auc"}
-# HIGHER_IS_BETTER_METRICS = {"accuracy", "balanced_accuracy", "r2", "roc_auc"}
-# METRIC_BALANCED_ACCURACY = {"balanced_accuracy", "balanced_acc"}  # NEEDED?
-# METRIC_LOGLOSS_CROSSENTROPY = {"log_loss", "cross_entropy"}  # NEEDED?
-# METRIC_MAE_MEANABSOLUTEERROR = {"mae", "mean_absolute_error"}  # NEEDED?
-# METRIC_MSE_MEANSQUAREDERROR = {"mse", "mean_squared_error"}  # NEEDED?
 MODEL_RESULTS_PKL = "model_results.pkl"
 NUMBER_NAN = -sys.maxsize
 OPTIONS_FILE_NAME = "options.json"
@@ -86,7 +74,6 @@ STRING_NAN = "__N_a_N__"
 TEST_FILE_NAME = "test.csv"
 TRAIN_FILE_NAME = "train.csv"
 TRAIN_NJOBS = 4  # Can set to 1 for easier debugging
-# _UID_NAME_RE = re.compile(r"(^|_)(id|uid|uuid|guid|key|identifier)($|_)", re.IGNORECASE)
 _UID_NAME_RE = re.compile(r"(^|_)(date|id|uid|uuid|guid|key|identifier)($|_)", re.IGNORECASE)
 _UID_SUFFIXES_CASE_SENSITIVE = (
     "Date",
@@ -130,9 +117,7 @@ _RATIO_RANGESSS: tuple[  # Ratio Ranges from ChatGPT indexed by [QTY_FOLDS][SPEE
     ((0.95, 1.18), (0.98, 1.08), (0.98, 1.08)),  # 5
 )
 RATIO_OK_PCTS = (0.01, 0.24, 0.49)
-# STARS_OK = (4.5, 4.8, 5.0)
 TIME_FACTORS = (1, 1, 1)  # Increased to (3, 3, 3), but it does not help.
-# TRY_ZERO_OVERFITTINGS = (True, True, True)  # (False, False, True)
 
 # Modal
 # Running test/maximal_columns (largest dataset) at speed 0, 600 seconds:
@@ -159,20 +144,15 @@ METRICS_AGL_PRIMARY = {
     # Classification
     "accuracy": "accuracy",
     "balanced_accuracy": "balanced_accuracy",
-    # "balanced_acc": "balanced_accuracy",
     "log_loss": "log_loss",
-    # "cross_entropy": "log_loss",
     "pr_auc": "average_precision",
     "roc_auc": "roc_auc",
     # Regression
     "mae": "mean_absolute_error",
-    # "mean_absolute_error": "mean_absolute_error",
     "mse": "mean_squared_error",
-    # "mean_squared_error": "mean_squared_error",
     "r2": "r2",  # r-squared
     "rmse": "root_mean_squared_error",
     "rmsle": "root_mean_squared_error",  # log/exp
-    # "root_mean_squared_error": "root_mean_squared_error",
 }
 # Minimal aliasing so FLAML always sees a metric name it understands.
 # User-facing Option.METRIC can still be any of these synonyms.
@@ -180,20 +160,15 @@ METRICS_FLAML_ALIASES: dict[str, str] = {
     # classification
     "accuracy": "accuracy",
     "balanced_accuracy": "balanced_accuracy",
-    # "balanced_acc": "balanced_accuracy",
     "log_loss": "log_loss",
-    # "cross_entropy": "log_loss",
     "pr_auc": "ap",
     "roc_auc": "roc_auc",
     # regression
     "mae": "mae",
-    # "mean_absolute_error": "mae",
     "mse": "mse",
-    # "mean_squared_error": "mse",
     "r2": "r2",  # r-squared
     "rmse": "rmse",
     "rmsle": "rmse",  # log/exp
-    # "root_mean_squared_error": "rmse",
 }
 assert set(METRICS_AGL_PRIMARY) == set(METRICS_FLAML_ALIASES)  # programmer bug
 
@@ -201,7 +176,7 @@ assert set(METRICS_AGL_PRIMARY) == set(METRICS_FLAML_ALIASES)  # programmer bug
 METRICS_DISPLAY = {
     "accuracy": "Accuracy",
     "balanced_accuracy": "Balanced_Accuracy",
-    "log_loss": "Log_Loss",  # NEW_LOG_LOSS
+    "log_loss": "Log_Loss",
     "mae": "MAE",
     "mse": "MSE",
     "pr_auc": "PR_AUC",
@@ -240,7 +215,17 @@ _YTransformationFunctionType: TypeAlias = Callable[[YSeriesType], YSeriesType]
 
 
 class AppError(Exception):
-    """Base class for all expected, user-facing application errors."""
+    """User-facing application error with structured metadata.
+
+    This exception is used for all expected errors caused by user input,
+    configuration, or data issues. It optionally includes a preview of
+    the test dataset to aid debugging in the UI.
+
+    Args:
+        message: Human-readable error message.
+        error_type: Stable machine-readable error code.
+        x_test: Optional test DataFrame used to generate a preview.
+    """
 
     def __init__(self, message: str, error_type: str, x_test: pd.DataFrame | None):
         super().__init__(message)
@@ -260,7 +245,12 @@ class FoldResult(NamedTuple):
 
 
 class MetricInfo(TypedDict):
-    """xxx"""
+    """Metadata describing a metric.
+
+    Attributes:
+        requires_proba: Whether the metric requires predicted probabilities
+            instead of class labels (e.g., log_loss, roc_auc).
+    """
 
     requires_proba: bool
 
@@ -277,7 +267,6 @@ class ModelResult(NamedTuple):
 
     # Training parameters
     run_id: str
-    # time_budget: int
     random_seed: int
     feature_pruning_threshold: int
     discourage_overfitting: int
@@ -292,10 +281,8 @@ class ModelResult(NamedTuple):
     cv_ratio_metric: float
     cv_score_penalized: float
     # Other
-    # data_directory: str
     feature_importances: pd.DataFrame | None
     fold_results: list[FoldResult]
-    # task: TaskType
     model: str
     task_index: int
     ml_framework: MLFramework
@@ -303,23 +290,24 @@ class ModelResult(NamedTuple):
     y_train: YSeriesType
     train_stars: float
     val_stars: float
-    # stars: tuple[float, float, float] | None
     robustness_score: float | None
     robustness_stars: float | None
     validation_stability: dict[str, Any] | None
     baseline_comparison: dict[str, Any] | None
-    # sensitivity_summary: dict[str, Any] | None
     segmented_performance: dict[str, Any] | None
     oof_predictions: npt.NDArray[Any] | pd.Series | None
     oof_pred_proba: npt.NDArray[np.floating[Any]] | None
     options: dict[str, Any]
-    # speed: int
-    # metric: str
-    # y_column_name: str
-    # uid_column_name: str | None
 
     def _candidate_id(self) -> str:
-        """xxx"""
+        """Construct a unique identifier for this model configuration.
+
+        The identifier is derived from key training parameters that define a
+        candidate model. This is useful for grouping or deduplicating runs.
+
+        Returns:
+            A string uniquely identifying the model configuration.
+        """
         return (
             f"{self.random_seed}-{self.feature_pruning_threshold}-{self.discourage_overfitting}-"
             f"{self.do_ensemble}-{self.do_early_stop}"
@@ -327,16 +315,27 @@ class ModelResult(NamedTuple):
 
     @property
     def candidate_id(self) -> str:
-        """xxx"""
+        """Public accessor for the model's candidate identifier.
+
+        Returns:
+            A string uniquely identifying the model configuration.
+        """
         return self._candidate_id()
 
     def display(self, train_file_path: str) -> Any:
-        """xxx"""
+        """Format model result for logging or display.
+
+        Produces a tuple of key attributes suitable for CSV-style logging.
+
+        Args:
+            train_file_path: Path to the training file (used for context display).
+
+        Returns:
+            A tuple containing formatted model metadata and metrics.
+        """
         return (
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            # train_file_path[-20:],
             train_file_path[:20],
-            # self.time_budget,
             self.random_seed,
             self.feature_pruning_threshold,
             self.discourage_overfitting,
@@ -359,7 +358,14 @@ class ModelResult(NamedTuple):
 
     @staticmethod
     def log(line: str) -> None:
-        """xxx"""
+        """Write a log line to the appropriate output.
+
+        In Modal environments, logs are printed to stdout for visibility.
+        Otherwise, logs are appended to a local CSV file.
+
+        Args:
+            line: The log line to write.
+        """
         if DO_MODAL:
             # print in Modal so you can see these in the log
             print_modal(line.replace("\n", ""))
@@ -374,7 +380,19 @@ class ModelResult(NamedTuple):
         acceptable_only: bool,
         **options: Any,
     ) -> list[ModelResult]:
-        """xxx"""
+        """Filter and log model results.
+
+        Optionally filters model results based on acceptable validation ratio ranges,
+        then logs the selected results in CSV format.
+
+        Args:
+            all_model_results: List of all model results.
+            acceptable_only: If True, filter results based on ratio thresholds.
+            **options: Runtime options including SPEED and TRAIN_FILE_PATH.
+
+        Returns:
+            The filtered list of model results.
+        """
         model_results: list[ModelResult] = []
         if acceptable_only:
             minimum_acceptable_quantity = min(
@@ -403,7 +421,19 @@ class ModelResult(NamedTuple):
         return model_results
 
     def validate(self, n_splits: int) -> None:
-        """xxx"""
+        """Validate internal consistency of model results.
+
+        Performs defensive checks to ensure:
+            - Fold count matches expected splits.
+            - Metrics are finite.
+            - Ratio metrics are consistent with raw values.
+
+        Args:
+            n_splits: Expected number of cross-validation folds.
+
+        Raises:
+            AssertionError: If any validation condition fails.
+        """
         assert (
             len(self.fold_results) == n_splits
         ), "fold_results length must equal n_splits"  # programmer bug
@@ -454,7 +484,11 @@ class ObjectImputation(Enum):
 
 
 class Option(StrEnum):
-    """xxx"""
+    """Enumeration of all configurable runtime options.
+
+    These options control data paths, model behavior, preprocessing,
+    and training configuration throughout the pipeline.
+    """
 
     CUSTOM_SYNTHETICS_FUNCTION = "custom_synthetics_function"  # function pointer
     DATA_DIRECTORY = "data_directory"
@@ -478,7 +512,13 @@ class Option(StrEnum):
 
 
 class Processor(Enum):
-    """xxx"""
+    """Enumeration of preprocessing operations applied to columns.
+
+    Values:
+        RANKED_CATEGORIES: Encode categories based on ranking.
+        FILL_VALUE: Fill missing values with a specified value.
+        SWAP: Replace values based on user-defined mappings.
+    """
 
     RANKED_CATEGORIES = auto()
     FILL_VALUE = auto()
@@ -491,14 +531,28 @@ ProcessorType: TypeAlias = dict[str, dict[Processor, Any]]
 def artifacts_directory(
     data_directory: str,
     run_id: str,
-    # time_budget: int,
     random_seed: int,
     feature_pruning_threshold: int,
     discourage_overfitting: int,
     do_ensemble: bool,
     do_early_stop: bool | None,
 ) -> Path:
-    """xxx"""
+    """Construct the directory path for storing model artifacts.
+
+    The path encodes key training parameters to ensure uniqueness.
+
+    Args:
+        data_directory: Base data directory.
+        run_id: Unique identifier for the training run.
+        random_seed: Random seed used for training.
+        feature_pruning_threshold: Feature pruning level.
+        discourage_overfitting: Overfitting control level.
+        do_ensemble: Whether ensembling is enabled.
+        do_early_stop: Whether early stopping is enabled.
+
+    Returns:
+        Path to the artifacts directory.
+    """
     return Path(
         f"{data_directory}/artifacts/{run_id}/{do_ensemble}_{discourage_overfitting}_"
         f"{random_seed}_{feature_pruning_threshold}_{do_early_stop}"
@@ -506,12 +560,17 @@ def artifacts_directory(
 
 
 def artifacts_directory_mr(mr: ModelResult) -> Path:
-    """xxx"""
+    """Construct the artifacts directory path from a ModelResult.
+
+    Args:
+        mr: ModelResult instance.
+
+    Returns:
+        Path to the corresponding artifacts directory.
+    """
     return artifacts_directory(
-        # mr.data_directory,
         mr.options[Option.DATA_DIRECTORY],
         mr.run_id,
-        # mr.time_budget,
         mr.random_seed,
         mr.feature_pruning_threshold,
         mr.discourage_overfitting,
@@ -525,7 +584,25 @@ def column_names_by_dtype(
     x_test: pd.DataFrame | None = None,
     exclude_constant_cols: bool = False,
 ) -> tuple[list[str], list[str]]:
-    """xxx"""
+    """Return column names grouped by dtype.
+
+    Separates columns into numeric and non-numeric (object/string) types.
+    Optionally excludes constant columns.
+
+    Args:
+        x_train: Training DataFrame.
+        x_test: Optional test DataFrame for schema validation.
+        exclude_constant_cols: Whether to exclude constant columns.
+
+    Returns:
+        A tuple of (numeric_column_names, object_column_names).
+
+    Raises:
+        AssertionError:
+            - If exclude_constant_cols=True and x_test is x_train (leakage guard)
+        AppError:
+            - Propagated from schema validation
+    """
     train_numbers, train_objects = _schema_validation(x_train, x_test)
 
     # Exclude all constant columns (including numbers)
@@ -682,23 +759,54 @@ def _determine_qty_folds_clamped(
 
 
 def get_constant_columns(df: pd.DataFrame) -> set[str]:
-    """
-    Return a set of columns that are either:
-      - 100% constant (all values identical), or
+    """Return columns that are constant.
+
+    A column is considered constant if all values are identical
+    (including NaN-only columns).
+
+    Args:
+        df: Input DataFrame.
+
+    Returns:
+        Set of column names with a single unique value.
     """
     return {col for col in df.columns if df[col].nunique(dropna=False) == 1}
 
 
 def _get_preview(df: pd.DataFrame, file_description: str) -> tuple[str, str]:
-    """xxx"""
+    """Generate a JSON preview of a DataFrame.
+
+    Returns up to the first 50 rows as JSON along with a descriptive label.
+
+    Args:
+        df: Input DataFrame.
+        file_description: Description of the data source.
+
+    Returns:
+        A tuple of (json_data, description).
+    """
     data = df[:50].to_json(orient="records")
-    # data_health = "{}"  # build_column_health_summary(df).to_json(orient="records")
     qualifier = "" if len(df) <= 50 else f" first 50 (out of {len(df)}) lines of"
-    return data, f"Preview of{qualifier} {file_description}"  # , data_health
+    return data, f"Preview of{qualifier} {file_description}"
 
 
 def get_xtrain_json(**options: Any) -> tuple[str, str]:
-    """xxx"""
+    """Load and preview the training dataset.
+
+    Reads the training CSV file and returns a JSON preview.
+
+    Args:
+        **options: Runtime options containing DATA_DIRECTORY.
+
+    Returns:
+        A tuple of (json_data, description).
+
+    Raises:
+        ValueError:
+            - If training file cannot be read
+        AppError:
+            - Propagated from CSV validation
+    """
     # Make sure you can read the file.
     x_train, _ = read_xy(os.path.join(options[Option.DATA_DIRECTORY], TRAIN_FILE_NAME))
     # Return data, data_description # , data_health
@@ -709,12 +817,44 @@ def infer_and_validate_options(
     ready_to_train: bool,
     **options: Any,
 ) -> tuple[dict[str, Any], dict[str, list[str]], list[str], str, str]:
-    """
-    Infer and validate options.  Leave it to the client/server code to catch any raised errors.
-      1. "assert" is used for programmer bugs
-      2. "RuntimeError" is used for errors that might happen that are not the fault of the user.
-      3. "AppError" is the fault of the user.  Or whoever provided the options and data.
-    At this point in the workflow, be safe and call them all AppError.
+    """Infer, normalize, and validate all runtime options.
+
+    This is the central entry point for preparing a training run. It:
+        1. Resolves file paths
+        2. Loads persisted options (options.json)
+        3. Infers task and metric from data
+        4. Validates schema and data consistency
+        5. Determines cross-validation folds
+        6. Prepares UI-facing metadata
+
+    Error handling strategy:
+        - AssertionError: programmer bugs
+        - RuntimeError: unexpected system failures
+        - AppError: user/data issues (preferred at this stage)
+
+    Args:
+        ready_to_train: Whether full validation should be enforced.
+        **options: Raw input options.
+
+    Returns:
+        A tuple containing:
+            - normalized options dict
+            - valid metrics per task (for UI)
+            - list of common unique columns (UID candidates)
+            - JSON preview of test data
+            - test data description
+
+    Raises:
+        AppError:
+            - prediction_file_has_target_column
+            - train_prediction_column_mismatch
+            - target_column_has_missing_values
+            - feature_mismatch_between_training_and_prediction
+            - Propagated from downstream validation (data, folds, etc.)
+        ValueError:
+            - Unknown option
+            - Invalid option type
+            - Unknown metric or task
     """
     # -------------------------------------------------------------------------
     # 1. Hard-code the directories and paths.
@@ -888,18 +1028,15 @@ def infer_and_validate_options(
 
     return (
         options,
-        # options.get(Option.TASK),  # pyright: ignore
         valid_display_task_metrics,
         common_unique_columns,
         x_test_data,
-        # x_test_health,
         x_test_description,
     )
 
 
 def _infer_task_and_metric(
     y_column: pd.Series,
-    # y_column_name: str,
     *,
     max_unique_ratio: float = 0.05,
     max_unique_count: int = 50,
@@ -968,15 +1105,18 @@ def _infer_task_and_metric(
             "accuracy",
         )
 
-    # ---- 4. Otherwise → regression ----------------------------------------
-    # if "sale" in y_column_name.lower():
-    #     return ["regression"], "regression", "rmsle"  # hack
-
     return ["regression"], "regression", "mae"
 
 
 def _is_list_of_str(x: Any) -> bool:
-    """xxx"""
+    """Check whether an object is a list of strings.
+
+    Args:
+        x: Object to check.
+
+    Returns:
+        True if x is a list of strings; False otherwise.
+    """
     return isinstance(x, list) and all(isinstance(elem, str) for elem in x)  # type: ignore
 
 
@@ -1127,20 +1267,33 @@ def looks_like_uid(column_name: str, s: pd.Series, be_lenient: bool = False) -> 
 
 
 def print_both(message: Any) -> None:
-    """xxx"""
+    """Print a message to both local and Modal outputs.
+
+    Args:
+        message: Message to print.
+    """
     print_local(message)
     print_modal(message)
 
 
 def print_local(message: Any) -> None:
-    """xxx"""
+    """Print a message to local stdout only.
+
+    Args:
+        message: Message to print.
+    """
     # Only print message locally.  Normally progress kind of stuff.
     if not DO_MODAL:
         print(message, flush=True)
 
 
 def print_modal(message: Any, do_print: bool = True) -> None:
-    """xxx"""
+    """Print a message to Modal logs.
+
+    Args:
+        message: Message to print.
+        do_print: Whether to actually print the message.
+    """
     # Only print message for Modal.  Use pdly tag so you can filter the log.
     if DO_MODAL and do_print:
         print(f"pdly: {message}", flush=True)
@@ -1203,14 +1356,20 @@ def _probably_has_header(csv_path: str) -> bool:
 
 
 def ratio_range(**options: Any) -> tuple[float, float]:
-    """xxx"""
+    """Return the acceptable ratio range for model validation.
+
+    Args:
+        **options: Runtime options containing SPEED and QTY_FOLDS.
+
+    Returns:
+        A tuple of (min_ratio, max_ratio).
+    """
     return _ratio_ranges(**options)[options[Option.SPEED]]
 
 
 def _ratio_ranges(
     **options: Any,
 ) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float]]:
-    # return _RATIO_RANGESSS[QTY_FOLDSS[options[Option.SPEED]]]
     return _RATIO_RANGESSS[options[Option.QTY_FOLDS]]
 
 
@@ -1220,8 +1379,26 @@ def read_xy(
     pop_y_column: bool = False,
     **options: Any,
 ) -> tuple[pd.DataFrame, YSeriesType]:
-    """
-    Read the data file and return x and y.
+    """Read a CSV file and optionally extract the target column.
+
+    Applies lightweight validation and optional preprocessing when
+    runtime options are provided.
+
+    Args:
+        file_path: Path to the CSV file.
+        pop_y_column: If True, remove and return the target column.
+        **options: Runtime options controlling preprocessing.
+
+    Returns:
+        A tuple of:
+            - DataFrame of features
+            - Target Series (empty if pop_y_column=False)
+
+    Raises:
+        AppError:
+            - invalid_csv_file
+        ValueError:
+            - File does not exist (session expired)
     """
     # Make sure the user directory exists.
     if not Path(file_path).exists():
@@ -1283,21 +1460,57 @@ def read_xy(
 
 
 def remove_training_results(directory_str: str) -> None:
-    """Remove model_results.pkl and the artifacts directory to force training to happen."""
+    """Delete cached training outputs.
+
+    Removes the serialized model results and artifacts directory
+    to force a fresh training run.
+
+    Args:
+        directory_str: Base directory containing training outputs.
+    """
     directory_path = Path(directory_str)
     (directory_path / MODEL_RESULTS_PKL).unlink(missing_ok=True)
     shutil.rmtree(directory_path / "artifacts", ignore_errors=True)
 
 
 def safe_div(a: float, b: float) -> float:
-    """xxx"""
+    """Safely divide two numbers.
+
+    Avoids division by zero by returning extreme float bounds.
+
+    Args:
+        a: Numerator.
+        b: Denominator.
+
+    Returns:
+        Result of division, or FLOAT_MAX / FLOAT_MIN if b == 0.
+
+    Notes:
+        Does not raise ZeroDivisionError; returns bounded values instead.
+    """
     return (a / b) if b != 0 else (FLOAT_MAX if a > 0 else FLOAT_MIN)
 
 
 def _schema_validation(
     x_train: pd.DataFrame, x_test: pd.DataFrame | None = None, y_column_name: str | None = None
 ) -> tuple[pd.Index[str], pd.Index[str]]:
-    """Unknown"""
+    """Validate schema consistency between training and test datasets.
+
+    Ensures that:
+        - Numeric and object columns match between datasets.
+        - Target column is excluded from feature validation.
+
+    Args:
+        x_train: Training DataFrame.
+        x_test: Optional test DataFrame.
+        y_column_name: Name of the target column to exclude.
+
+    Returns:
+        Tuple of (numeric_columns, object_columns).
+
+    Raises:
+        AppError: If schema mismatch is detected.
+    """
     train_numbers = x_train.select_dtypes(include="number").columns
     train_objects = x_train.columns.difference(train_numbers)
 
@@ -1345,30 +1558,29 @@ def suppress_stdout_stderr() -> Iterator[None]:
 
 
 def to_df(xdf: Any) -> pd.DataFrame:
-    """xxx"""
+    """Convert input to a pandas DataFrame if needed.
+
+    Args:
+        xdf: Input object.
+
+    Returns:
+        A pandas DataFrame.
+    """
     return xdf if isinstance(xdf, pd.DataFrame) else pd.DataFrame(xdf)
 
 
-# def to_float(y: YSeriesType) -> FloatSeriesType:  # Series[float]:
-#     # """Ensure y is NumPy-backed float64, minimizing copies."""
-#     # return y.astype("float64", copy=False)
-#     """Ensure y is NumPy-backed float64, minimizing copies."""
-#     return y.astype(np.float64, copy=False)
-# def to_float(y: YSeriesType) -> FloatSeriesType:
-#     """Ensure y is NumPy-backed float64, minimizing copies."""
-#     if y.dtype == np.float64:
-#         return y
-#     return y.astype(np.float64)
-# def to_float(y: YSeriesType) -> FloatSeriesType:
-#     """Ensure y is NumPy-backed float64, minimizing copies."""
-#     return cast(FloatSeriesType, y.astype(np.float64))
 def to_float(y: YSeriesType) -> FloatSeriesType:
     """Ensure y is NumPy-backed float64, minimizing copies."""
     return y.astype(np.float64)
 
 
 def to_pickle(path: str | Path, data: Any) -> None:
-    """Serialize data to disk."""
+    """Serialize data to disk.
+
+    Raises:
+        OSError:
+            - If the file cannot be written
+    """
     p = Path(path)
     with p.open("wb") as f:
         pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -1397,29 +1609,6 @@ def _valid_metrics(task: TaskType, num_unique: int = -1, display_names: bool = F
             valids = ["mae", "mse", "r2", "rmse", "rmsle"]
 
     return valids
-
-
-# def _valid_metrics(task: TaskType, num_unique: int = -1, display_names: bool = False) -> list[str
-#     """
-#     Return the list of valid metrics for a given task and num_unique.
-#     Use lists, not sets or tuples, because they are passed in json.
-#     """
-#     if task == "classification":
-#         if display_names:
-#             valids = ["Accuracy", "Balanced_Accuracy", "Log_Loss", "ROC_AUC"]
-#             if num_unique != 2:
-#                 valids.remove("ROC_AUC")
-#         else:
-#             valids = ["accuracy", "balanced_accuracy", "log_loss", "roc_auc"]
-#             if num_unique != 2:
-#                 valids.remove("roc_auc")
-#     else:  # regression
-#         if display_names:
-#             valids = ["MAE", "MSE", "R2", "RMSE", "RMSLE"]
-#         else:
-#             valids = ["mae", "mse", "r2", "rmse", "rmsle"]
-
-#     return valids
 
 
 def _validate_data(
@@ -1534,7 +1723,7 @@ def _validate_options(x_train: pd.DataFrame | None = None, **options: Any) -> No
         opt_value = options.get(opt)
         if opt_value is not None:
             # Optional options
-            if opt in (Option.FEATURE_NAMES_TO_EXCLUDE):  # , Option.BOOLEAN_COLUMNS_TO_INT):
+            if opt in (Option.FEATURE_NAMES_TO_EXCLUDE):
                 if not _is_list_of_str(opt_value):
                     raise ValueError(f"The option '{opt.value}' must be a list of strings")
                 if x_train is not None:
@@ -1546,7 +1735,7 @@ def _validate_options(x_train: pd.DataFrame | None = None, **options: Any) -> No
                             )
             elif opt in (Option.SUBMIT_TRUE_FALSE,):
                 if not isinstance(opt_value, bool):
-                    raise ValueError(f"'{opt.value}' must be a boolean")  # , opt.value)
+                    raise ValueError(f"'{opt.value}' must be a boolean")
             elif opt in (
                 Option.DATA_DIRECTORY,
                 Option.METRIC,
@@ -1558,13 +1747,13 @@ def _validate_options(x_train: pd.DataFrame | None = None, **options: Any) -> No
                 Option.Y_COLUMN_NAME,
             ):
                 if not isinstance(opt_value, str) or opt_value == "":
-                    raise ValueError(f"'{opt.value}' must be a non-empty string")  # , opt.value)
+                    raise ValueError(f"'{opt.value}' must be a non-empty string")
             elif opt in (
                 Option.Y_TRANSFORMATION_FUNCTION_POST,
                 Option.Y_TRANSFORMATION_FUNCTION_PRE,
             ):
                 if not isinstance(opt_value, np.ufunc):
-                    raise ValueError(f"'{opt.value}' must be a numpy function")  # , opt.value)
+                    raise ValueError(f"'{opt.value}' must be a numpy function")
         else:  # opt_value is None
             # Required options
             if opt in (
@@ -1574,7 +1763,7 @@ def _validate_options(x_train: pd.DataFrame | None = None, **options: Any) -> No
                 Option.TEST_FILE_PATH,
                 Option.TRAIN_FILE_PATH,
             ):
-                raise ValueError(f"'{opt.value}' is required")  # , f"{opt.value}_is_required")
+                raise ValueError(f"'{opt.value}' is required")
             if x_train is not None:
                 if opt in (
                     Option.METRIC,
@@ -1582,14 +1771,21 @@ def _validate_options(x_train: pd.DataFrame | None = None, **options: Any) -> No
                     Option.TASK,
                     Option.Y_COLUMN_NAME,
                 ):
-                    raise ValueError(f"'{opt.value}' is required")  # , f"{opt.value}_is_required")
+                    raise ValueError(f"'{opt.value}' is required")
 
 
 def y_pre_transformation_values(y: YSeriesType, **options: Any) -> YSeriesType:
-    """
-    Convert np.log(y) back to original y.  When y_train is read in util.read_xy(), y_train is
-    actually np.log(y_train).  So then fit is trained on np.log(y_train), so y_predictions is
-    actually np.log(y_predictions).  So we have to "undo" the log here by using np.exp().
+    """Reverse any pre-training transformation applied to the target.
+
+    For example, if log1p was applied before training, this function
+    applies the inverse transformation (exp and adjustment).
+
+    Args:
+        y: Transformed predictions or target values.
+        **options: Runtime options containing transformation functions.
+
+    Returns:
+        Values transformed back to the original scale.
     """
     transformation_function_post = options.get(Option.Y_TRANSFORMATION_FUNCTION_POST)
     if transformation_function_post:
@@ -1598,271 +1794,3 @@ def y_pre_transformation_values(y: YSeriesType, **options: Any) -> YSeriesType:
             if options.get(Option.Y_TRANSFORMATION_FUNCTION_PRE) == np.log1p:
                 y = y - 1  # pyright: ignore[reportOperatorIssue]
     return y
-
-
-############################################## OBSOLETE
-# def is_uuid4(uuid_string: str) -> bool:
-#     """
-#     Checks if the provided string is a valid UUID version 4 in standard format.
-
-#     Args:
-#         uuid_string: The string to validate.
-
-#     Returns:
-#         True if the string is a valid version 4 UUID, False otherwise.
-#     """
-#     try:
-#         # Attempt to create a UUID object
-#         uuid_obj = uuid.UUID(uuid_string, version=4)
-#     except ValueError:
-#         # If a ValueError is raised, the string is not a valid UUID
-#         return False
-
-#     # Ensure the string representation of the object exactly matches the input
-#     # to enforce the standard 8-4-4-4-12 hyphenated format
-#     return str(uuid_obj) == uuid_string
-
-# def _convert_binary_text_columns(df: pd.DataFrame) -> pd.DataFrame:
-#     """Convert binary yes/no style columns to integer 1/0.
-
-#     This function scans all object/string columns in the dataframe. If a column
-#     contains only one of the following case-insensitive binary pairs, it is
-#     converted to integers:
-
-#     - ("yes", "no")
-#     - ("true", "false")
-#     - ("y", "n")
-#     - ("t", "f")
-
-#     The mapping is always the positive form → 1 and the negative form → 0.
-
-#     Examples
-#     --------
-#     yes / no      → 1 / 0
-#     TRUE / FALSE  → 1 / 0
-#     y / n         → 1 / 0
-#     t / f         → 1 / 0
-
-#     The original dataframe is not modified; a copy is returned.
-
-#     Args:
-#         df: Input pandas DataFrame.
-
-#     Returns:
-#         A new DataFrame where qualifying binary text columns are converted
-#         to integer columns with values {1, 0}.
-#     """
-#     # Work on a copy to avoid mutating the caller's dataframe.
-#     df_out: pd.DataFrame = df.copy()
-
-#     # Define supported binary vocabularies.
-#     positive_tokens = {"yes", "y", "true", "t", "male", "m"}
-#     negative_tokens = {"no", "n", "false", "f", "female", "f"}
-
-#     null_tokens = {"na", "n/a", "nan", "none", "null"}
-
-#     for col in df_out.columns:
-#         series = df_out[col]
-
-#         # Only attempt conversion on object/string columns.
-#         if not pd.api.types.is_object_dtype(series) and not pd.api.types.is_string_dtype(series):
-#             continue
-
-#         # Normalize values to lowercase strings.
-#         normalized_series = series.astype(str).str.strip().str.lower()
-
-#         # Treat textual null tokens as real missing values.
-#         series = series.mask(normalized_series.isin(null_tokens))
-
-#         # Drop missing values before inspecting unique values.
-#         non_null = series.dropna()
-
-#         if non_null.empty:
-#             continue
-
-#         # Normalize values to lowercase strings.
-#         normalized = non_null.astype(str).str.strip().str.lower()
-
-#         unique_vals = set(normalized.unique())
-
-#         # Determine if the column strictly contains a supported binary pair.
-#         if unique_vals.issubset(positive_tokens | negative_tokens):
-#             # Map tokens to integer values.
-#             mapping = {token: 1 for token in positive_tokens}
-#             mapping.update({token: 0 for token in negative_tokens})
-
-#             # Apply mapping while preserving NaN values.
-#             df_out[col] = (
-#                 series.astype(str)
-#                 .str.strip()
-#                 .str.lower()
-#                 .map(mapping)
-#                 .astype("Int8")  # Int8 is a pandas nullable integer dtype.
-#             )
-
-
-# #     return df_out
-
-
-# def _convert_binary_text_columns(df: pd.DataFrame) -> pd.DataFrame:
-#     """Convert binary yes/no style columns to integer 1/0.
-
-#     This function scans all object/string columns in the dataframe. If a column
-#     contains only recognized binary tokens (case-insensitive), it is converted
-#     to integers.
-
-#     The original dataframe is not modified; a copy is returned.
-
-#     Args:
-#         df: Input pandas DataFrame.
-
-#     Returns:
-#         A new DataFrame where qualifying binary text columns are converted
-#         to integer columns with values {1, 0}.
-#     """
-#     df_out: pd.DataFrame = df.copy()
-
-#     # CHANGED: use one explicit token-to-int mapping instead of separate sets
-#     binary_mapping = {
-#         "yes": 1,
-#         "y": 1,
-#         "true": 1,
-#         "t": 1,
-#         "male": 1,
-#         "m": 1,
-#         "no": 0,
-#         "n": 0,
-#         "false": 0,
-#         "f": 0,
-#         "female": 0,
-#     }
-
-#     null_tokens = {"na", "n/a", "nan", "none", "null"}
-
-#     for col in df_out.columns:
-#         series = df_out[col]
-
-#         if not pd.api.types.is_object_dtype(series) and not pd.api.types.is_string_dtype(series):
-#             continue
-
-#         normalized_series = series.astype(str).str.strip().str.lower()
-
-#         series = series.mask(normalized_series.isin(null_tokens))
-
-#         non_null = series.dropna()
-#         if non_null.empty:
-#             continue
-
-#         normalized = non_null.astype(str).str.strip().str.lower()
-#         unique_vals = set(normalized.unique())
-
-#         # CHANGED: detect using mapping keys directly
-#         if unique_vals.issubset(binary_mapping):
-#             df_out[col] = (
-#                 series.astype(str)
-#                 .str.strip()
-#                 .str.lower()
-#                 .map(binary_mapping)  # CHANGED: map directly from explicit dict
-#                 .astype("Int8")
-#             )
-
-#     return df_out
-
-
-# def _convert_binary_text_columns(df: pd.DataFrame) -> pd.DataFrame:
-#     """Convert binary yes/no style columns to integer 1/0.
-
-#     This function scans all object/string columns in the dataframe. If a column
-#     contains only recognized binary tokens (case-insensitive), it is converted
-#     to integers.
-
-#     The original dataframe is not modified; a copy is returned.
-
-#     Args:
-#         df: Input pandas DataFrame.
-
-#     Returns:
-#         A new DataFrame where qualifying binary text columns are converted
-#         to integer columns with values {1, 0}.
-#     """
-#     df_out: pd.DataFrame = df.copy()
-
-#     binary_mapping = {
-#         "yes": 1,
-#         "y": 1,
-#         "true": 1,
-#         "t": 1,
-#         "male": 1,
-#         "m": 1,
-#         "no": 0,
-#         "n": 0,
-#         "false": 0,
-#         "f": 0,
-#         "female": 0,
-#     }
-
-#     null_tokens = {"na", "n/a", "nan", "none", "null"}
-
-#     for col in df_out.columns:
-#         series = df_out[col]
-
-#         if not pd.api.types.is_object_dtype(series) and not pd.api.types.is_string_dtype(series):
-#             continue
-
-#         normalized_series = series.astype(str).str.strip().str.lower()
-
-#         # Treat textual null tokens as real missing values.
-#         series = series.mask(normalized_series.isin(null_tokens))
-
-#         # Detect whether column contains missing values
-#         has_null = series.isna().any()
-
-#         non_null = series.dropna()
-#         if non_null.empty:
-#             continue
-
-#         normalized = non_null.astype(str).str.strip().str.lower()
-#         unique_vals = set(normalized.unique())
-
-#         if unique_vals.issubset(binary_mapping):
-#             use_dtype = "Int8" if has_null else "int8"
-#             df_out[col] = (
-#                 series.astype(str).str.strip().str.lower().map(binary_mapping).astype(use_dtype)
-#             )
-
-#     return df_out
-
-
-# def _boolean_columns_to_int(
-#     df: pd.DataFrame, boolean_column_names: list[str] | None
-# ) -> pd.DataFrame:
-#     if not boolean_column_names:
-#         return df
-#     for col_spec in boolean_column_names:
-#         col_parts = col_spec.split(";")
-#         col = col_parts[0]
-#         chars_false = list(col_parts[1]) if 2 <= len(col_parts) else []
-#         chars_true = list(col_parts[2]) if 3 <= len(col_parts) else []
-#         ser = df[col]
-
-#         out = pd.Series(-1, index=ser.index, dtype="int8")  # numeric 0/1
-
-#         bool_mask = ser.map(lambda x: isinstance(x, (bool, np.bool_)))
-#         out[bool_mask] = ser[bool_mask].astype("int8")  # numeric 0/1
-
-#         str_mask = ser.map(lambda x: isinstance(x, str))
-#         first = pd.Series(pd.NA, index=ser.index, dtype="string")
-#         first[str_mask] = pd.Series(ser[str_mask], dtype="string").str.strip().str[:1]
-
-#         out[first.isin(["0", "f", "F", "n", "N"] + chars_false)] = 0
-#         out[first.isin(["1", "t", "T", "y", "Y"] + chars_true)] = 1
-
-#         df[col] = out
-
-#     return df
-
-# def log_modal_memory(msg: str = "") -> None:
-#     """log Modal RSS MiB"""
-#     proc = psutil.Process(os.getpid())
-#     rss_mb = proc.memory_info().rss / (1024 * 1024)
-#     print_modal(f"MEMORY {msg} RSS={rss_mb:.1f} MiB", DO_DEBUG)

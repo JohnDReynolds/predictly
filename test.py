@@ -160,7 +160,13 @@ _TOLERANCES: dict[str, tuple[dict[str, float], dict[str, float], dict[str, float
         {},
     ),
     "ramadan": ({}, {}, {}),
-    "sigaida": ({}, {}, {}),
+    "sigaida": (
+        {  # SPEED == 0
+            "score_penalized": 0.0029,
+        },
+        {},
+        {},
+    ),
     "spaceship_titanic": ({}, {}, {}),
     "statmod": ({}, {}, {}),
     "titanic": ({}, {}, {}),

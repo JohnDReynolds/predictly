@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast, Optional
 
-
 # Third-Party imports
 import tabular.utilities as util
 
@@ -65,23 +64,26 @@ from tabular.utilities import (
 
 @dataclass
 class _ProbCal:
-    """
-    Simple 1D probability calibrator wrapper.
+    """One-dimensional probability calibrator.
 
-    Parameters
-    ----------
-    model
-        Underlying calibration model (isotonic regression or logistic regression).
-    kind
-        "isotonic" or "platt".
+    Attributes:
+        model: Underlying calibration model, either isotonic regression or
+            logistic regression for Platt scaling.
+        kind: Calibration strategy. Expected values are ``"isotonic"`` and
+            ``"platt"``.
     """
 
     model: IsotonicRegression | LogisticRegression
     kind: str
 
     def transform(self, arr: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-        """
-        Transform raw probabilities using the calibration model.
+        """Calibrate raw probabilities.
+
+        Args:
+            arr: One-dimensional array of raw probabilities.
+
+        Returns:
+            Calibrated probabilities clipped to the range [0.0, 1.0].
         """
         a = np.asarray(arr, dtype=float)
 
@@ -95,7 +97,16 @@ class _ProbCal:
 
 @dataclass
 class TrainingState:
-    """Persistent state for artifact-based prediction."""
+    """Persistent state saved with per-framework training artifacts.
+
+    Attributes:
+        metric: User-facing metric name used during training.
+        task: Task type, either classification or regression.
+        n_splits: Number of cross-validation folds saved as artifacts.
+        label_encoder: Optional label encoder used for classification targets.
+        best_threshold: Optional tuned binary-classification threshold.
+        calibrator: Optional probability calibrator for binary classification.
+    """
 
     metric: str
     task: TaskType
@@ -106,18 +117,15 @@ class TrainingState:
 
 
 class WholeDataPreprocessor(BaseEstimator, TransformerMixin):
-    """
-    Fold-safe adapter around a two-step preprocessing API:
+    """Fold-safe adapter around fit/apply preprocessing functions.
 
-        fit_func(x_train_df, y_train_series, feature_pruning_threshold, **options)
-            -> (x_train_prepped_df, prep_state)
-
-        apply_func(x_df, prep_state) -> x_prepped_df
+    The adapter lets sklearn-compatible training code use the project preprocessing
+    API without leaking validation/test data into fit-time preprocessing decisions.
 
     Behavior:
-      - fit(x_tr, y_tr): learns mapping on the TRAIN fold only via fit_func(...).
-      - transform(x): applies the *same* mapping to val/test via apply_func(x, prep_state).
-      - Ensures column alignment to the training-prepped schema (adds missing as 0; drops extras).
+        - ``fit`` learns preprocessing from the training fold only.
+        - ``transform`` replays the same learned mapping for validation/test rows.
+        - Output columns are aligned to the training-preprocessed schema.
     """
 
     def __init__(
@@ -143,7 +151,18 @@ class WholeDataPreprocessor(BaseEstimator, TransformerMixin):
         x: pd.DataFrame,
         y: npt.NDArray[np.float64] | npt.NDArray[np.int64],
     ) -> "WholeDataPreprocessor":
-        """xxx"""
+        """Learn preprocessing state from a training fold.
+
+        Args:
+            x: Training-fold feature DataFrame.
+            y: Training-fold target values.
+
+        Returns:
+            The fitted preprocessor.
+
+        Raises:
+            AssertionError: If the fit function fails to return a non-empty DataFrame.
+        """
         x_tr2, prep_state = self._fit_func(
             x,
             pd.Series(y),
@@ -161,7 +180,18 @@ class WholeDataPreprocessor(BaseEstimator, TransformerMixin):
         return self
 
     def transform(self, x: pd.DataFrame) -> pd.DataFrame:
-        """xxx"""
+        """Apply previously learned preprocessing state.
+
+        Args:
+            x: Feature DataFrame to transform.
+
+        Returns:
+            Transformed DataFrame aligned to the fitted training schema.
+
+        Raises:
+            AssertionError: If called before ``fit`` or if the apply function
+                returns invalid output.
+        """
         assert (
             self._prep_state is not None and self.columns_ is not None
         ), "transform() before fit()."  # programmer bug
@@ -183,7 +213,18 @@ class WholeDataPreprocessor(BaseEstimator, TransformerMixin):
         X: pd.DataFrame,
         y: npt.NDArray[np.float64] | npt.NDArray[np.int64],
     ) -> pd.DataFrame:
-        """xxx"""
+        """Fit preprocessing state and return transformed training data.
+
+        Args:
+            X: Training-fold feature DataFrame.
+            y: Training-fold target values.
+
+        Returns:
+            Transformed training-fold DataFrame.
+
+        Raises:
+            AssertionError: If fitting does not produce transformed training data.
+        """
         self.fit(X, y)
         assert (
             self._x_train_prepped is not None
@@ -221,7 +262,14 @@ _PER_FOLD_MIN_SECONDS_FLAML: int = 8  # Makes sure it does not get too small.
 def _aggregate_regression_preds(
     preds: list[npt.NDArray[np.float64]],
 ) -> npt.NDArray[np.float64]:
-    """Average per-fold regression predictions."""
+    """Average per-fold regression predictions.
+
+    Args:
+        preds: List of per-fold prediction arrays.
+
+    Returns:
+        Mean prediction for each row.
+    """
     return np.mean(np.vstack(preds), axis=0)
 
 
@@ -229,7 +277,15 @@ def _agl_pos_proba_from_df(
     df: pd.DataFrame,
     le: LabelEncoder | None,
 ) -> npt.NDArray[np.float64]:
-    """Return positive-class probability from an AutoGluon proba DataFrame."""
+    """Extract positive-class probabilities from AutoGluon output.
+
+    Args:
+        df: DataFrame returned by AutoGluon ``predict_proba``.
+        le: Optional label encoder used during training.
+
+    Returns:
+        One-dimensional positive-class probability array.
+    """
     if le is not None and len(le.classes_) > 1 and le.classes_[1] in df.columns:
         return df[le.classes_[1]].to_numpy(dtype=float)
     if 1 in df.columns:
@@ -241,7 +297,15 @@ def _agl_proba_matrix_from_df(
     df: pd.DataFrame,
     le: LabelEncoder | None,
 ) -> npt.NDArray[np.float64]:
-    """Return probability matrix with columns in encoder order if possible."""
+    """Extract a class-probability matrix from AutoGluon output.
+
+    Args:
+        df: DataFrame returned by AutoGluon ``predict_proba``.
+        le: Optional label encoder used during training.
+
+    Returns:
+        Probability matrix, ordered by label encoder classes when possible.
+    """
     if le is not None:
         cols = list(le.classes_)
         if all(c in df.columns for c in cols):
@@ -250,8 +314,18 @@ def _agl_proba_matrix_from_df(
 
 
 def _audit_float32_fit_matrix(x: pd.DataFrame, max_examples: int = 8) -> None:
-    """
-    Definitive audit for 'Input X contains infinity or a value too large for dtype("float32")'.
+    """Audit whether a feature matrix can safely be cast to float32.
+
+    This catches non-finite and extremely large values before downstream model
+    libraries fail with less-informative errors.
+
+    Args:
+        x: Feature matrix to audit.
+        max_examples: Maximum number of example row values to include per issue.
+
+    Raises:
+        AssertionError: If ``x`` is not a DataFrame.
+        RuntimeError: If float32 conversion fails or unsafe values are found.
     """
     if util.DO_MODAL:  # pyright: ignore[reportUnnecessaryComparison]
         return
@@ -312,21 +386,21 @@ def _cls_loss(
     y_hat_labels: npt.NDArray[np.int64] | npt.NDArray[np.bool_],
     y_hat_proba: npt.NDArray[np.float64] | npt.NDArray[np.float32],
 ) -> float:
-    """Lower-is-better classification loss aligned with your metrics.
+    """Compute lower-is-better classification loss for a configured metric.
 
-    Supports both binary and multi-class:
-      - For log_loss:
-          * binary: 1D array of positive-class probabilities
-          * multiclass: 2D proba matrix (n_samples, n_classes)
-            (rows are clipped to [0, 1] and renormalized to sum to 1).
-      - For roc_auc:
-          * binary only: 1D array of positive-class probabilities
-          * returns 1 - ROC_AUC so lower is better
-      - For pr_auc:
-          * binary only: 1D array of positive-class probabilities
-          * returns 1 - PR_AUC so lower is better
-      - For balanced_accuracy: 1 - balanced_accuracy_score.
-      - Else: 1 - accuracy_score.
+    Args:
+        metric: Metric name.
+        y_true: True labels encoded as integers or booleans.
+        y_hat_labels: Predicted labels encoded as integers or booleans.
+        y_hat_proba: Predicted probabilities. Binary probability metrics expect
+            a one-dimensional positive-class probability array; multiclass
+            ``log_loss`` expects a two-dimensional probability matrix.
+
+    Returns:
+        Loss-style metric value where lower is better.
+
+    Raises:
+        ValueError: If a probability-based metric receives an invalid probability shape.
     """
     y_true_arr = np.asarray(y_true, dtype=int)
     y_hat_arr = np.asarray(y_hat_labels, dtype=int)
@@ -370,75 +444,21 @@ def _cls_loss(
     return 1.0 - float(accuracy_score(y_true_arr, y_hat_arr))
 
 
-# def _cls_loss(
-#     metric: str,
-#     y_true: npt.NDArray[np.int64] | npt.NDArray[np.bool_],
-#     y_hat_labels: npt.NDArray[np.int64] | npt.NDArray[np.bool_],
-#     y_hat_proba: npt.NDArray[np.float64] | npt.NDArray[np.float32],
-# ) -> float:
-#     """Lower-is-better classification loss aligned with your metrics.
-
-#     Supports both binary and multi-class:
-#       - For log_loss / cross_entropy:
-#           * binary: 1D array of positive-class probabilities
-#           * multiclass: 2D proba matrix (n_samples, n_classes)
-#             (rows are clipped to [0, 1] and renormalized to sum to 1).
-#       - For roc_auc:
-#           * binary only: 1D array of positive-class probabilities
-#           * returns 1 - ROC_AUC so lower is better
-#       - For balanced_accuracy: 1 - balanced_accuracy_score.
-#       - Else: 1 - accuracy_score.
-#     """
-#     y_true_arr = np.asarray(y_true, dtype=int)
-#     y_hat_arr = np.asarray(y_hat_labels, dtype=int)
-#     # metric = str(metric).lower()
-
-#     if metric == "log_loss":
-#         p = np.asarray(y_hat_proba, dtype=float)
-
-#         # Binary: 1D of positive-class probabilities; sklearn handles clipping internally.
-#         if p.ndim == 1:
-#             return float(log_loss(y_true_arr, p))
-
-#         # Multiclass: 2D (n_samples, n_classes). Make rows valid probability distributions.
-#         if p.ndim == 2:
-#             p = np.clip(p, 0.0, 1.0)
-#             row_sums = p.sum(axis=1, keepdims=True)
-
-#             zero_mask = row_sums <= 0.0
-#             if np.any(zero_mask):
-#                 n_classes = p.shape[1]
-#                 p[zero_mask] = 1.0 / float(n_classes)
-#                 row_sums = p.sum(axis=1, keepdims=True)
-
-#             p = p / row_sums
-#             return float(log_loss(y_true_arr, p))
-
-#         raise ValueError(f"log_loss expects 1D or 2D probability array, got shape {p.shape!r}")
-
-#     if metric == "roc_auc":
-#         p = np.asarray(y_hat_proba, dtype=float)
-#         if p.ndim != 1:
-#             raise ValueError(f"roc_auc expects 1D positive-class probabilities, got {p.shape!r}")
-#         return float(1.0 - roc_auc_score(y_true_arr, p))
-
-#     if metric == "balanced_accuracy":
-#         return 1.0 - float(balanced_accuracy_score(y_true_arr, y_hat_arr))
-
-#     return 1.0 - float(accuracy_score(y_true_arr, y_hat_arr))
-
-
 def _estimate_hpo_trials(
     x_train_fold: pd.DataFrame, per_fold_seconds: int, do_ensemble: bool
 ) -> int:
-    """
-    Heuristic num_trials for AutoGluon HPO on 1 CPU.
+    """Estimate a bounded AutoGluon HPO trial count for one fold.
 
-    Simple behavior:
-      - Scales with rows/cols and per-fold time.
-      - Caps at a small, fixed max depending on ensemble usage.
-      - Does NOT depend on strictness (s_strict) anymore, to avoid
-        subtle interactions and cliffs.
+    The estimate scales with rows, columns, and available per-fold time, but
+    remains capped so extra time does not explode the number of trials.
+
+    Args:
+        x_train_fold: Training-fold feature matrix.
+        per_fold_seconds: Time budget for the fold, in seconds.
+        do_ensemble: Whether ensemble training is enabled.
+
+    Returns:
+        Number of HPO trials to request.
     """
     n_rows, n_cols = x_train_fold.shape
 
@@ -468,9 +488,18 @@ def _feature_importances_agl(
     y_all_orig: npt.NDArray[np.float64],
     task: TaskType,
 ) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
-    """
-    Compute AutoGluon feature importance on the full training data mapped
-    through the best fold's preprocessing. Returns a dataframe.
+    """Compute AutoGluon feature importances on transformed training data.
+
+    Args:
+        predictor: Best-fold AutoGluon predictor, if available.
+        preproc: Best-fold fitted preprocessor, if available.
+        x_train: Original training features.
+        y_all_orig: Original training targets.
+        task: Task type.
+
+    Returns:
+        Tuple of ``(feature_importances, transformed_training_features)``.
+        Either value may be None if required inputs are unavailable.
     """
     if predictor is None or preproc is None:
         return None, None
@@ -494,11 +523,15 @@ def _feature_importances_agl(
 
 
 def _feature_importances_calculate(importances: pd.DataFrame) -> pd.DataFrame | None:
-    """Add normalized absolute importance and sign columns.
+    """Normalize raw feature importances for UI display.
 
-    - importance_pct: |importance| / sum(|importance|)
-                      (sums to 1.0 unless all importances are zero)
-    - importance_sign: 1 if importance >= 0, else 0
+    Args:
+        importances: DataFrame containing an ``importance`` column indexed by
+            feature name.
+
+    Returns:
+        DataFrame with ``Feature`` and ``Model Importance`` columns, or None if
+        all importances are zero or unusable.
     """
     abs_importance = importances["importance"].abs()
     total_abs = abs_importance.sum()
@@ -535,6 +568,21 @@ def _feature_importances_flaml(
     x_train_original: pd.DataFrame,
     y_train: YSeriesType,
 ) -> tuple[pd.DataFrame | None, pd.DataFrame | None]:
+    """Compute FLAML feature importances on transformed training data.
+
+    Uses native feature importances or coefficients when available, and falls
+    back to permutation importance otherwise.
+
+    Args:
+        aml: Best-fold FLAML AutoML object, if available.
+        preproc: Best-fold fitted preprocessor, if available.
+        x_train_original: Original training features.
+        y_train: Training targets.
+
+    Returns:
+        Tuple of ``(feature_importances, transformed_training_features)``.
+        Either value may be None if required inputs are unavailable.
+    """
     if aml is None or preproc is None:
         return None, None
 
@@ -558,7 +606,6 @@ def _feature_importances_flaml(
             y_train,
             n_repeats=3,
             random_state=util.RANDOM_STATE,
-            # n_jobs=-1, too spikey
         )
         scores = _as_1d(perm.importances_mean)
 
@@ -578,95 +625,6 @@ def _feature_importances_flaml(
     return _feature_importances_calculate(df), x_train_transformed
 
 
-# def _finalize_oof_metrics(
-#     task: TaskType,
-#     metric: str,
-#     y_all: YSeriesType | npt.NDArray[Any],
-#     oof_store: npt.NDArray[Any],
-#     le: Optional[LabelEncoder],
-#     is_binary: bool,
-# ) -> tuple[float, float | None, Any | None]:
-#     """
-#     Shared finalization of OOF metrics for both AGL and FLAML.
-
-#     Returns:
-#         val_loss, best_threshold, calibrator
-#     """
-#     y_all_arr = np.asarray(y_all)
-#     # metric = str(metric).lower()
-
-#     if task == "classification":
-#         assert le is not None, "LabelEncoder must not be None for classification."
-
-#         if is_binary:
-#             mask_bool: npt.NDArray[np.bool_] = np.asarray(np.isfinite(oof_store), dtype=bool)
-#             y_encoded_all = cast(npt.NDArray[np.int64], le.transform(y_all_arr))
-#             y_true_all: npt.NDArray[np.int64] = y_encoded_all[mask_bool]
-#             p_oof_raw: npt.NDArray[np.float64] = np.asarray(oof_store, dtype=float)[mask_bool]
-
-#             if metric == "log_loss":
-#                 calibrator = _fit_prob_calibrator(y_true_all, p_oof_raw)
-#                 if calibrator is not None:
-#                     p_oof = calibrator.transform(p_oof_raw)
-#                 else:
-#                     p_oof = p_oof_raw
-#                 best_thr: float | None = 0.5
-#                 y_hat = p_oof >= best_thr
-#                 val_loss = _cls_loss(metric, y_true_all, y_hat, p_oof)
-
-#             elif metric == "roc_auc":
-#                 # ROC-AUC is threshold-free and rank-based, so do not calibrate and do not tune a
-#                 # threshold.
-#                 best_thr = None
-#                 calibrator = None
-#                 y_hat_dummy = p_oof_raw >= 0.5
-#                 val_loss = _cls_loss(metric, y_true_all, y_hat_dummy, p_oof_raw)
-
-#             else:
-#                 ths = np.unique(np.round(p_oof_raw, 6))
-#                 if ths.size > 512:
-#                     ths = np.linspace(0.1, 0.9, 161)
-
-#                 scores: list[float] = []
-#                 y_int = y_true_all.astype(int)
-#                 for t in ths:
-#                     y_hat_t = (p_oof_raw >= t).astype(int)
-#                     if metric == "balanced_accuracy":
-#                         score_t = balanced_accuracy_score(y_int, y_hat_t)
-#                     else:
-#                         score_t = accuracy_score(y_int, y_hat_t)
-#                     scores.append(float(score_t))
-
-#                 t_star = float(ths[int(np.argmax(scores))])
-#                 best_thr = float(np.clip(t_star, 0.35, 0.65))
-#                 y_hat = (p_oof_raw >= best_thr).astype(int)
-#                 val_loss = _cls_loss(metric, y_int, y_hat, p_oof_raw)
-#                 calibrator = None
-
-#         else:
-#             # Multi-class
-#             mask_rows = ~np.isnan(oof_store).any(axis=1)
-#             y_encoded_all = cast(npt.NDArray[np.int64], le.transform(y_all_arr))
-#             y_true_all = y_encoded_all[mask_rows]
-#             proba_all = np.asarray(oof_store, dtype=float)[mask_rows, :]
-
-#             y_hat = np.argmax(proba_all, axis=1)
-#             val_loss = _cls_loss(metric, y_true_all, y_hat, proba_all)
-#             best_thr = None
-#             calibrator = None
-
-#     else:
-#         # Regression
-#         mask = np.asarray(np.isfinite(oof_store), dtype=bool)
-#         y_true = np.asarray(y_all_arr, dtype=float)[mask]
-#         y_hat = np.asarray(oof_store, dtype=float)[mask]
-#         val_loss = _regression_loss(metric, y_true, y_hat)
-#         best_thr = None
-#         calibrator = None
-
-#     return float(val_loss), best_thr, calibrator
-
-
 def _finalize_oof_metrics(
     task: TaskType,
     metric: str,
@@ -675,11 +633,22 @@ def _finalize_oof_metrics(
     le: Optional[LabelEncoder],
     is_binary: bool,
 ) -> tuple[float, float | None, Any | None]:
-    """
-    Shared finalization of OOF metrics for both AGL and FLAML.
+    """Finalize out-of-fold validation loss and optional binary artifacts.
+
+    Args:
+        task: Task type.
+        metric: Metric name.
+        y_all: Original target values for all rows.
+        oof_store: Out-of-fold predictions or probabilities.
+        le: Optional label encoder for classification.
+        is_binary: Whether the classification task is binary.
 
     Returns:
-        val_loss, best_threshold, calibrator
+        Tuple of ``(validation_loss, best_threshold, calibrator)``.
+
+    Raises:
+        AssertionError: If classification is requested without a label encoder.
+        ValueError: If metric-specific scoring receives invalid prediction shapes.
     """
     y_all_arr = np.asarray(y_all)
 
@@ -753,7 +722,15 @@ def _finalize_oof_metrics(
 
 
 def _finite_label_mask(y: npt.NDArray[Any], task: TaskType) -> npt.NDArray[np.bool_]:
-    """Mask for labels that are finite / non-missing."""
+    """Return a mask identifying usable target values.
+
+    Args:
+        y: Target values.
+        task: Task type.
+
+    Returns:
+        Boolean mask where True indicates a usable label.
+    """
     s = pd.Series(y)
     if task == "classification":
         return s.notna().to_numpy()
@@ -765,8 +742,14 @@ def _fit_prob_calibrator(
     y_true_bin: npt.NDArray[np.int64],
     proba: npt.NDArray[np.float64],
 ) -> Optional[_ProbCal]:
-    """
-    Fits a simple 1D probability calibrator on OOF probabilities (binary only).
+    """Fit a one-dimensional probability calibrator for binary OOF scores.
+
+    Args:
+        y_true_bin: Binary target values encoded as 0/1.
+        proba: Raw positive-class probabilities.
+
+    Returns:
+        Fitted calibrator, or None if there is not enough data variation.
     """
     y = np.asarray(y_true_bin, dtype=int)
     p = np.asarray(proba, dtype=float)
@@ -794,16 +777,27 @@ def _flaml_binary_scores(
     metric: str,
     le: LabelEncoder | None,
 ) -> npt.NDArray[np.float64]:
-    """
-    Return positive-class scores for binary classification.
+    """Return FLAML positive-class scores for binary classification.
 
-    Falls back to encoded labels if predict_proba is unavailable and
-    the metric is not probability-based.
+    Falls back to encoded labels only when ``predict_proba`` is unavailable and
+    the metric does not require probabilities.
+
+    Args:
+        aml: Fitted FLAML AutoML object.
+        x: Transformed feature matrix.
+        metric: Metric name.
+        le: Optional label encoder used during training.
+
+    Returns:
+        One-dimensional score array.
+
+    Raises:
+        RuntimeError: If probabilities are required but unavailable, if fallback
+            label encoding is required without a label encoder, or if the
+            probability output has an invalid shape.
     """
-    # metric = str(metric).lower()
     proba_raw = aml.predict_proba(x)
     if proba_raw is None:
-        # if metric == "log_loss" or metric == "roc_auc":
         if metric in {"log_loss", "roc_auc", "pr_auc"}:
             raise RuntimeError(
                 "FLAML estimator.predict_proba returned None while a probability-based "
@@ -831,7 +825,19 @@ def _flaml_proba_matrix(
     x: pd.DataFrame,
     le: LabelEncoder | None,
 ) -> npt.NDArray[np.float64]:
-    """Multi-class: full proba matrix in encoder order if possible."""
+    """Return a FLAML multi-class probability matrix.
+
+    Args:
+        aml: Fitted FLAML AutoML object.
+        x: Transformed feature matrix.
+        le: Optional label encoder used during training.
+
+    Returns:
+        Probability matrix, ordered by label encoder classes when possible.
+
+    Raises:
+        RuntimeError: If ``predict_proba`` returns None.
+    """
     proba_raw = aml.predict_proba(x)
     if proba_raw is None:
         raise RuntimeError("predict_proba returned None for multi-class task.")
@@ -846,21 +852,29 @@ def _flaml_proba_matrix(
 def predict_model_agl_from_artifacts(
     x_test: pd.DataFrame, model_result: ModelResult
 ) -> YPredictionsType:
-    """
-    Load per-fold AutoGluon predictors and preprocessors from artifact_dir,
-    aggregate predictions, and return y_predictions for x_test.
+    """Load AutoGluon fold artifacts and generate test predictions.
 
-    Classification:
-        - Binary:
-            - If metric is log_loss / cross_entropy / roc_auc → return probabilities
-              (shape: (n_samples,)).
-            - Else → return 0/1 labels (decoded if possible).
-        - Multi-class:
-            - If metric is log_loss / cross_entropy → return proba matrix (n_samples, n_classes).
-            - Else → return class labels via argmax (decoded to original labels if possible).
+    Classification behavior:
+        - Binary ``log_loss``, ``roc_auc``, and ``pr_auc`` return positive-class probabilities.
+        - Binary label metrics return thresholded labels, decoded when possible.
+        - Multiclass ``log_loss`` returns a probability matrix.
+        - Multiclass label metrics return class labels, decoded when possible.
 
-    Regression:
-        - Return mean prediction across folds.
+    Regression behavior:
+        - Returns the average prediction across saved folds.
+
+    Args:
+        x_test: Test feature DataFrame.
+        model_result: ModelResult whose artifact directory contains AutoGluon folds.
+
+    Returns:
+        Prediction array or label array appropriate for the trained task/metric.
+
+    Raises:
+        AssertionError: If expected fold artifact directories or stored classification
+            thresholds are missing.
+        RuntimeError: If no AutoGluon fold predictions are available.
+        FileNotFoundError: If required artifact files cannot be loaded.
     """
     out_dir = util.artifacts_directory_mr(model_result)
     state: TrainingState = joblib.load(out_dir / "agl_state.joblib")
@@ -925,33 +939,6 @@ def predict_model_agl_from_artifacts(
 
             return label_idx
 
-        # if state.task == "classification":
-        #     if is_binary:
-        #         all_preds = np.vstack(test_preds_accum)
-
-        #         if state.metric == "log_loss":
-        #             if state.calibrator is not None:
-        #                 calibrated = np.vstack([state.calibrator.transform(p) for p in all_preds]
-        #             else:
-        #                 calibrated = all_preds
-        #             return np.mean(calibrated, axis=0)
-
-        #         if state.metric in {"roc_auc", "pr_auc"}:
-        #             # ROC-AUC requires continuous positive-class scores, not thresholded labels.
-        #             return np.mean(all_preds, axis=0)
-
-        #         assert (
-        #             state.best_threshold is not None
-        #         ), "Stored threshold is missing for classification."
-        #         proba_med = np.median(all_preds, axis=0)
-        #         label_idx = (proba_med >= state.best_threshold).astype(int)
-
-        #         if state.label_encoder is not None:
-        #             labels = state.label_encoder.inverse_transform(label_idx)
-        #             return labels
-
-        #         return label_idx
-
         # Multi-class
         all_preds_mc = np.stack(test_preds_accum, axis=0)  # (k, n, C)
         proba_mean = np.mean(all_preds_mc, axis=0)  # (n, C)
@@ -971,21 +958,30 @@ def predict_model_agl_from_artifacts(
 def predict_model_flaml_from_artifacts(
     x_test: pd.DataFrame, model_result: ModelResult
 ) -> YPredictionsType:
-    """
-    Load per-fold FLAML AutoML models and preprocessors from artifact_dir,
-    aggregate predictions, and return y_predictions for x_test.
+    """Load FLAML fold artifacts and generate test predictions.
 
-    Classification:
-        - Binary:
-            - If metric is log_loss / cross_entropy / roc_auc → return probabilities
-              (shape: (n_samples,)).
-            - Else → return labels {0,1} (decoded if possible).
-        - Multi-class:
-            - If metric is log_loss / cross_entropy → return proba matrix (n_samples, n_classes).
-            - Else → return labels via argmax (decoded if possible).
+    Classification behavior:
+        - Binary ``log_loss``, ``roc_auc``, and ``pr_auc`` return positive-class probabilities.
+        - Binary label metrics return thresholded labels, decoded when possible.
+        - Multiclass ``log_loss`` returns a probability matrix.
+        - Multiclass label metrics return class labels, decoded when possible.
 
-    Regression:
-        - Return mean prediction across folds.
+    Regression behavior:
+        - Returns the average prediction across saved folds.
+
+    Args:
+        x_test: Test feature DataFrame.
+        model_result: ModelResult whose artifact directory contains FLAML folds.
+
+    Returns:
+        Prediction array or label array appropriate for the trained task/metric.
+
+    Raises:
+        AssertionError: If expected fold artifact directories or stored classification
+            thresholds are missing.
+        RuntimeError: If no FLAML fold predictions are available, or if required
+            probabilities cannot be produced for a probability-based metric.
+        FileNotFoundError: If required artifact files cannot be loaded.
     """
     out_dir = util.artifacts_directory_mr(model_result)
     state: TrainingState = joblib.load(out_dir / "flaml_state.joblib")
@@ -1025,33 +1021,6 @@ def predict_model_flaml_from_artifacts(
 
     if not test_preds_accum:
         raise RuntimeError("No FLAML fold artifacts found for prediction.")
-
-    # if state.task == "classification":
-    #     if is_binary:
-    #         all_preds = np.vstack(test_preds_accum)
-
-    #         if state.metric == "log_loss":
-    #             if state.calibrator is not None:
-    #                 calibrated = np.vstack([state.calibrator.transform(p) for p in all_preds])
-    #             else:
-    #                 calibrated = all_preds
-    #             return np.mean(calibrated, axis=0)
-
-    #         if state.metric == "roc_auc":
-    #             # ROC-AUC requires continuous positive-class scores, not thresholded labels.
-    #             return np.mean(all_preds, axis=0)
-
-    #         assert (
-    #             state.best_threshold is not None
-    #         ), "Stored threshold is missing for classification."
-    #         proba_med = np.median(all_preds, axis=0)
-    #         label_idx = (proba_med >= state.best_threshold).astype(int)
-
-    #         if state.label_encoder is not None:
-    #             labels = state.label_encoder.inverse_transform(label_idx)
-    #             return labels
-
-    #         return label_idx
 
     if state.task == "classification":
         if is_binary:
@@ -1101,7 +1070,16 @@ def _regression_loss(
     y_true: npt.NDArray[np.float64],
     y_hat: npt.NDArray[np.float64],
 ) -> float:
-    """Lower-is-better regression loss aligned with your metrics."""
+    """Compute lower-is-better regression loss for a configured metric.
+
+    Args:
+        metric: Metric name.
+        y_true: True numeric target values.
+        y_hat: Predicted numeric target values.
+
+    Returns:
+        Loss-style metric value where lower is better.
+    """
     if metric == "mae":
         return float(mean_absolute_error(y_true, y_hat))
 
@@ -1128,8 +1106,27 @@ def train_model_agl_store_artifacts(
     task_index: int,
     **options: Any,
 ) -> ModelResult:
-    """
-    Train AutoGluon with OOF, save per-fold artifacts to disk, and return a ModelResult.
+    """Train AutoGluon with out-of-fold validation and persist artifacts.
+
+    Args:
+        x_train: Training feature DataFrame.
+        y_train: Training target values.
+        random_seed: Random seed for splitting and model training.
+        feature_pruning_threshold: Feature-pruning strictness level.
+        s_strict: Continuous overfitting-discouragement strictness in [0, 1].
+        do_ensemble: Whether to enable AutoGluon ensembling.
+        do_early_stop: Must be None for the AutoGluon path.
+        task_index: Index of this training task within the broader run.
+        **options: Runtime options including task, metric, folds, paths, and run ID.
+
+    Returns:
+        ModelResult containing fold metrics, artifact metadata, feature importances,
+        and OOF predictions/probabilities.
+
+    Raises:
+        AssertionError: If AutoGluon-specific invariants are violated.
+        RuntimeError: If float32 matrix auditing or downstream training fails.
+        ValueError: If metric-specific scoring receives invalid prediction shapes.
     """
     assert (
         do_early_stop is None
@@ -1147,7 +1144,6 @@ def train_model_agl_store_artifacts(
     ) = _train_parameters(
         x_train,
         MLFramework.AUTOGLUON,
-        # time_budget,
         random_seed,
         feature_pruning_threshold,
         s_strict,
@@ -1179,10 +1175,6 @@ def train_model_agl_store_artifacts(
         # Multiclass + DyStack + accuracy can trigger the error:
         #   "Classification metrics can't handle a mix of unknown and multiclass targets"
         #   inside AutoGluon's experimental DyStack code.
-        # if task == "classification" and is_binary:
-        #     dynamic_stacking = True
-        # else:
-        #     dynamic_stacking = False
         dynamic_stacking = task == "classification" and is_binary
         num_bag_folds = 3
         num_bag_sets = 1
@@ -1250,13 +1242,6 @@ def train_model_agl_store_artifacts(
         val_df = val_df.reset_index(drop=True)
 
         if 0.0 < s_strict:
-            # hyperparameters = make_hp_spaces_agl(s_strict)
-
-            # ag_problem_type = "binary" if is_binary else "multiclass"
-            # is_multiclass = options[Option.ML_TASK] == "multiclass"  # or however you encode it
-            # metric_name = options[Option.METRIC]  # e.g. "balanced_accuracy"
-            # skip_xgb = is_multiclass and metric_name == "balanced_accuracy"
-
             # Bug in AGL for multiclass and balanced_accuracy, so tell it to skip_xgb
             skip_xgb = (ag_problem_type == "multiclass") and (metric == "balanced_accuracy")
             hyperparameters = make_hp_spaces_agl(
@@ -1288,7 +1273,6 @@ def train_model_agl_store_artifacts(
             label=y_col,
             eval_metric=eval_metric,
             problem_type=ag_problem_type,
-            # verbosity=2 if _SHOW_VERBOSE else 1,
             verbosity=0 if util.DO_MODAL else 1,
             path=str(fold_dir),
         )
@@ -1298,7 +1282,7 @@ def train_model_agl_store_artifacts(
 
         assert presets is not None  # programmer bug
         tsx = util.suppress_stdout_stderr() if util.DO_MODAL else nullcontext()
-        with tsx:  # util.suppress_stdout_stderr():  # if util.DO_GOOGLE_CLOUD else nullcontext():
+        with tsx:
             predictor.fit(
                 dynamic_stacking=dynamic_stacking,
                 feature_generator=IdentityFeatureGenerator(),
@@ -1387,8 +1371,6 @@ def train_model_agl_store_artifacts(
             best_fold_predictor = predictor
             best_fold_preproc = preproc
 
-        # util.log_modal_memory(f"end of train_model_agl_store_artifacts() fold={fold_i}")
-
     # Shared finalization of OOF-based val_loss / threshold / calibrator
     val_loss, best_thr, calibrator = _finalize_oof_metrics(
         task=task,
@@ -1442,7 +1424,6 @@ def train_model_agl_store_artifacts(
 
     model_result = ModelResult(
         run_id=options[Option.RUN_ID],
-        # time_budget=time_budget,
         random_seed=random_seed,
         feature_pruning_threshold=feature_pruning_threshold,
         discourage_overfitting=discourage_overfitting,
@@ -1455,10 +1436,8 @@ def train_model_agl_store_artifacts(
         cv_val_metric=util.NUMBER_NAN,
         cv_ratio_metric=util.NUMBER_NAN,
         cv_score_penalized=util.NUMBER_NAN,
-        # data_directory=data_directory,
         feature_importances=feature_importances,
         fold_results=fold_results,
-        # task=task,
         model=f"AGL AutoGluon: {n_splits} folds; ~{per_fold_seconds}s/fold",
         task_index=task_index,
         ml_framework=MLFramework.AUTOGLUON,
@@ -1466,21 +1445,17 @@ def train_model_agl_store_artifacts(
         y_train=y_train,
         train_stars=util.NUMBER_NAN,
         val_stars=util.NUMBER_NAN,
-        # stars=(util.NUMBER_NAN, util.NUMBER_NAN, util.NUMBER_NAN),
         robustness_score=None,
         robustness_stars=None,
         validation_stability=None,
         baseline_comparison=None,
-        # sensitivity_summary=None,
         segmented_performance=None,
         oof_predictions=oof_predictions,
         oof_pred_proba=oof_pred_proba,
         options=options,
-        # speed=options[Option.SPEED],
     )
     model_result.validate(n_splits)
 
-    # util.log_modal_memory("end of train_model_agl_store_artifacts()")
     return model_result
 
 
@@ -1495,8 +1470,27 @@ def train_model_flaml_store_artifacts(
     task_index: int,
     **options: Any,
 ) -> ModelResult:
-    """
-    Train FLAML with OOF, save per-fold artifacts to disk, and return a ModelResult.
+    """Train FLAML with out-of-fold validation and persist artifacts.
+
+    Args:
+        x_train: Training feature DataFrame.
+        y_train: Training target values.
+        random_seed: Random seed for splitting and model training.
+        feature_pruning_threshold: Feature-pruning strictness level.
+        s_strict: Continuous overfitting-discouragement strictness in [0, 1].
+        do_ensemble: Whether to enable FLAML ensembling.
+        do_early_stop: Whether FLAML early stopping is enabled. Must not be None.
+        task_index: Index of this training task within the broader run.
+        **options: Runtime options including task, metric, folds, paths, and run ID.
+
+    Returns:
+        ModelResult containing fold metrics, artifact metadata, feature importances,
+        and OOF predictions/probabilities.
+
+    Raises:
+        AssertionError: If FLAML-specific invariants are violated.
+        RuntimeError: If required probabilities cannot be produced for scoring.
+        ValueError: If metric-specific scoring receives invalid prediction shapes.
     """
     assert do_early_stop is not None, "FLAML requires explicit do_early_stop."  # programmer bug
 
@@ -1512,7 +1506,6 @@ def train_model_flaml_store_artifacts(
     ) = _train_parameters(
         x_train,
         MLFramework.FLAML,
-        # time_budget,
         random_seed,
         feature_pruning_threshold,
         s_strict,
@@ -1570,7 +1563,6 @@ def train_model_flaml_store_artifacts(
         "seed": random_seed,
         "task": task,
         "time_budget": per_fold_seconds,
-        # "verbose": 3 if _SHOW_VERBOSE else 2,
         "verbose": 0 if util.DO_MODAL else 2,
     }
 
@@ -1605,7 +1597,7 @@ def train_model_flaml_store_artifacts(
             fold_settings["estimator_list"] = list(custom.keys())
 
         aml = AutoML()
-        with util.suppress_stdout_stderr():  #  if util.DO_GOOGLE_CLOUD else nullcontext():
+        with util.suppress_stdout_stderr():
             aml.fit(x_tr_use, y_tr, X_val=x_va_use, y_val=y_va, **fold_settings)
 
         fold_dir = artifacts_directory / f"flaml_fold_{fold_i}"
@@ -1680,8 +1672,6 @@ def train_model_flaml_store_artifacts(
             best_fold_preproc = preproc
             best_fold_aml = aml
 
-        # util.log_modal_memory(f"end of train_model_flaml_store_artifacts() fold={fold_i}")
-
     # Shared finalization of OOF-based val_loss / threshold / calibrator
     val_loss, best_thr, calibrator = _finalize_oof_metrics(
         task=task,
@@ -1734,7 +1724,6 @@ def train_model_flaml_store_artifacts(
 
     model_result = ModelResult(
         run_id=options[Option.RUN_ID],
-        # time_budget=time_budget,
         random_seed=random_seed,
         feature_pruning_threshold=feature_pruning_threshold,
         discourage_overfitting=discourage_overfitting,
@@ -1747,10 +1736,8 @@ def train_model_flaml_store_artifacts(
         cv_val_metric=util.NUMBER_NAN,
         cv_ratio_metric=util.NUMBER_NAN,
         cv_score_penalized=util.NUMBER_NAN,
-        # data_directory=data_directory,
         feature_importances=feature_importances,
         fold_results=fold_results,
-        # task=task,
         model=f"FLAML AutoML: {n_splits} folds; ~{per_fold_seconds}s/fold",
         task_index=task_index,
         ml_framework=MLFramework.FLAML,
@@ -1758,28 +1745,23 @@ def train_model_flaml_store_artifacts(
         y_train=y_train,
         train_stars=util.NUMBER_NAN,
         val_stars=util.NUMBER_NAN,
-        # stars=(util.NUMBER_NAN, util.NUMBER_NAN, util.NUMBER_NAN),
         robustness_score=None,
         robustness_stars=None,
         validation_stability=None,
         baseline_comparison=None,
-        # sensitivity_summary=None,
         segmented_performance=None,
         oof_predictions=oof_predictions,
         oof_pred_proba=oof_pred_proba,
         options=options,
-        # speed=options[Option.SPEED],
     )
     model_result.validate(n_splits)
 
-    # util.log_modal_memory("end of train_model_flaml_store_artifacts()")
     return model_result
 
 
 def _train_parameters(
     x_train: pd.DataFrame,
     ml_framework: MLFramework,
-    # time_budget: int,
     random_seed: int,
     feature_pruning_threshold: int,
     s_strict: float,
@@ -1787,21 +1769,21 @@ def _train_parameters(
     do_early_stop: bool | None,
     **options: Any,
 ) -> tuple[Path, int, str, TaskType, int, int, str | None, KFold | StratifiedKFold]:
-    """
-    Returns training parameters for a 1-CPU MacBook Pro run with 5-fold OOF.
+    """Derive framework-specific training parameters for one task.
 
-    Behavior:
-      * Compute a total wall-clock budget (seconds) based on:
-            - user time_budget (minutes)
-            - framework (AutoGluon vs FLAML)
-            - dataset size (rows, columns)
-            - ensemble usage
-      * Derive a per-fold budget from the total.
-      * For AutoGluon:
-            - Use the per-fold budget as-is.
-      * For FLAML:
-            - Apply a size-aware cap on per-fold seconds so that very large
-              time_budget values cannot drive FLAML into overfitting regimes.
+    Args:
+        x_train: Training feature DataFrame.
+        ml_framework: Framework to train with.
+        random_seed: Random seed for cross-validation splitting.
+        feature_pruning_threshold: Feature-pruning strictness level.
+        s_strict: Continuous overfitting-discouragement strictness in [0, 1].
+        do_ensemble: Whether ensemble training is enabled.
+        do_early_stop: Whether early stopping is enabled, if applicable.
+        **options: Runtime options including task, metric, folds, paths, speed, and run ID.
+
+    Returns:
+        Tuple containing artifact directory, integer strictness code, metric, task,
+        fold count, per-fold seconds, optional AutoGluon presets, and CV splitter.
     """
     # --------------------------------------------------------------
     # 1) CV splitter and minimal safety budget
@@ -1898,12 +1880,17 @@ def _train_parameters(
 
 
 def _uniquify_column_names(values: pd.Series) -> pd.Series:
-    """
-    Transform unique strings to their '__' tail, preserving uniqueness by re-adding
-    the 'head + __' prefix to the minimum number of entries needed.
+    """Simplify transformed feature names while preserving uniqueness.
 
-    After prefix removal, also attempts to remove a '_sklearn' suffix from tails,
-    but only where doing so preserves uniqueness.
+    Args:
+        values: Series of unique feature names.
+
+    Returns:
+        Series of simplified feature names.
+
+    Raises:
+        ValueError: If input values are not unique or cannot be made unique after
+            simplification.
     """
     if not values.is_unique:
         dupes = values[values.duplicated()].unique()
@@ -1942,392 +1929,3 @@ def _uniquify_column_names(values: pd.Series) -> pd.Series:
         )
 
     return new_values
-
-
-###################################### OBSOLETE
-
-# def _cls_loss(
-#     metric: str,
-#     y_true: npt.NDArray[np.int64] | npt.NDArray[np.bool_],
-#     y_hat_labels: npt.NDArray[np.int64] | npt.NDArray[np.bool_],
-#     y_hat_proba: npt.NDArray[np.float64] | npt.NDArray[np.float32],
-# ) -> float:
-#     """Lower-is-better classification loss aligned with your metrics.
-
-#     Supports both binary and multi-class:
-#       - For log_loss / cross_entropy: uses sklearn.log_loss with proba (1D or 2D).
-#       - For balanced_accuracy: 1 - balanced_accuracy_score.
-#       - Else: 1 - accuracy_score.
-#     """
-#     y_true_arr = np.asarray(y_true, dtype=int)
-#     y_hat_arr = np.asarray(y_hat_labels, dtype=int)
-#     # m = str(metric).lower()
-
-#     if metric in util.METRIC_LOGLOSS_CROSSENTROPY:
-#         eps = 1e-7
-#         p = np.asarray(y_hat_proba, dtype=float)
-#         p = np.clip(p, eps, 1.0 - eps)
-#         return float(log_loss(y_true_arr, p))
-
-#     if metric in {"balanced_accuracy", "balanced_acc"}:
-#         return 1.0 - float(balanced_accuracy_score(y_true_arr, y_hat_arr))
-
-#     return 1.0 - float(accuracy_score(y_true_arr, y_hat_arr))
-
-
-# def _cls_loss(
-#     metric: str,
-#     y_true: npt.NDArray[np.int64] | npt.NDArray[np.bool_],
-#     y_hat_labels: npt.NDArray[np.int64] | npt.NDArray[np.bool_],
-#     y_hat_proba: npt.NDArray[np.float64] | npt.NDArray[np.float32],
-# ) -> float:
-#     """Lower-is-better classification loss aligned with your metrics.
-
-#     Supports both binary and multi-class:
-#       - For log_loss / cross_entropy:
-#           * binary: 1D array of positive-class probabilities
-#           * multiclass: 2D proba matrix (n_samples, n_classes)
-#             (rows are clipped to [0, 1] and renormalized to sum to 1).
-#       - For balanced_accuracy: 1 - balanced_accuracy_score.
-#       - Else: 1 - accuracy_score.
-#     """
-#     y_true_arr = np.asarray(y_true, dtype=int)
-#     y_hat_arr = np.asarray(y_hat_labels, dtype=int)
-
-#     if metric in util.METRIC_LOGLOSS_CROSSENTROPY:
-#         p = np.asarray(y_hat_proba, dtype=float)
-
-#         # Binary: 1D of positive-class probabilities; sklearn handles clipping internally.
-#         if p.ndim == 1:
-#             return float(log_loss(y_true_arr, p))
-
-#         # Multiclass: 2D (n_samples, n_classes). Make rows valid probability distributions.
-#         if p.ndim == 2:
-#             # Clip to [0, 1] defensively, then renormalize each row to sum to 1.
-#             p = np.clip(p, 0.0, 1.0)
-#             row_sums = p.sum(axis=1, keepdims=True)
-
-#             # For any row that sums to 0 (degenerate), replace with a uniform distribution.
-#             zero_mask = row_sums <= 0.0
-#             if np.any(zero_mask):
-#                 n_classes = p.shape[1]
-#                 p[zero_mask] = 1.0 / float(n_classes)
-#                 row_sums = p.sum(axis=1, keepdims=True)
-
-#             p = p / row_sums
-#             return float(log_loss(y_true_arr, p))
-
-#         # Anything else is a programmer error: log_loss expects 1D or 2D probs.
-#         raise ValueError(f"log_loss expects 1D or 2D probability array, got shape {p.shape!r}")
-
-#     if metric in {"balanced_accuracy", "balanced_acc"}:
-#         return 1.0 - float(balanced_accuracy_score(y_true_arr, y_hat_arr))
-
-#     return 1.0 - float(accuracy_score(y_true_arr, y_hat_arr))
-
-
-# def _finalize_oof_metrics(
-#     task: TaskType,
-#     metric: str,
-#     y_all: YSeriesType | npt.NDArray[Any],
-#     oof_store: npt.NDArray[Any],
-#     le: Optional[LabelEncoder],
-#     is_binary: bool,
-# ) -> tuple[float, float | None, Any | None]:
-#     """
-#     Shared finalization of OOF metrics for both AGL and FLAML.
-
-#     Returns:
-#         val_loss, best_threshold, calibrator
-#     """
-#     y_all_arr = np.asarray(y_all)
-
-#     if task == "classification":
-#         assert (
-#             le is not None
-#         ), "LabelEncoder must not be None for classification."  # programmer bug
-#         if is_binary:
-#             mask_bool: npt.NDArray[np.bool_] = np.asarray(np.isfinite(oof_store), dtype=bool)
-#             y_encoded_all = cast(npt.NDArray[np.int64], le.transform(y_all_arr))  # cast for lint
-#             y_true_all: npt.NDArray[np.int64] = y_encoded_all[mask_bool]
-#             p_oof_raw: npt.NDArray[np.float64] = np.asarray(oof_store, dtype=float)[mask_bool]
-
-#             if metric in util.METRIC_LOGLOSS_CROSSENTROPY:
-#                 calibrator = _fit_prob_calibrator(y_true_all, p_oof_raw)
-#                 if calibrator is not None:
-#                     p_oof = calibrator.transform(p_oof_raw)
-#                 else:
-#                     p_oof = p_oof_raw
-#                 best_thr: float | None = 0.5
-#                 y_hat = p_oof >= best_thr
-#                 val_loss = _cls_loss(metric, y_true_all, y_hat, p_oof)
-#             else:
-#                 ths = np.unique(np.round(p_oof_raw, 6))
-#                 if ths.size > 512:
-#                     ths = np.linspace(0.1, 0.9, 161)
-
-#                 accs: list[float] = []
-#                 y_int = y_true_all.astype(int)
-#                 for t in ths:
-#                     accs.append(((p_oof_raw >= t).astype(int) == y_int).mean())
-
-#                 t_star = float(ths[int(np.argmax(accs))])
-#                 best_thr = float(np.clip(t_star, 0.35, 0.65))
-#                 y_hat = (p_oof_raw >= best_thr).astype(int)
-#                 val_loss = _cls_loss(metric, y_int, y_hat, p_oof_raw)
-#                 calibrator = None
-
-#         else:
-#             # Multi-class
-#             mask_rows = ~np.isnan(oof_store).any(axis=1)
-#             y_encoded_all = cast(npt.NDArray[np.int64], le.transform(y_all_arr))  # cast for lint
-#             y_true_all = y_encoded_all[mask_rows]
-#             proba_all = np.asarray(oof_store, dtype=float)[mask_rows, :]
-
-#             y_hat = np.argmax(proba_all, axis=1)
-#             val_loss = _cls_loss(metric, y_true_all, y_hat, proba_all)
-#             best_thr = None
-#             calibrator = None
-
-#     else:
-#         # Regression
-#         mask = np.asarray(np.isfinite(oof_store), dtype=bool)
-#         y_true = np.asarray(y_all_arr, dtype=float)[mask]
-#         y_hat = np.asarray(oof_store, dtype=float)[mask]
-#         val_loss = _regression_loss(metric, y_true, y_hat)
-#         best_thr = None
-#         calibrator = None
-
-#     return float(val_loss), best_thr, calibrator
-
-
-# def _flaml_binary_scores(
-#     aml: AutoML,
-#     x: pd.DataFrame,
-#     metric: str,
-#     le: LabelEncoder | None,
-# ) -> npt.NDArray[np.float64]:
-#     """
-#     Return positive-class scores for binary classification.
-
-#     Falls back to encoded labels if predict_proba is unavailable and
-#     the metric is not probability-based.
-#     """
-#     proba_raw = aml.predict_proba(x)
-#     if proba_raw is None:
-#         if metric in util.METRIC_LOGLOSS_CROSSENTROPY:
-#             raise RuntimeError(
-#                 "FLAML estimator.predict_proba returned None while a prob-based "
-#                 "metric was requested."
-#             )
-#         if le is None:
-#             raise RuntimeError("LabelEncoder is required when falling back from predict_proba.")
-#         labels = aml.predict(x)
-#         encoded = le.transform(pd.Series(labels))
-#         return np.asarray(encoded, dtype=float)
-
-#     proba_arr = np.asarray(proba_raw, dtype=float)
-#     if proba_arr.ndim == 1:
-#         return proba_arr
-#     if proba_arr.shape[1] < 2:
-#         raise RuntimeError(
-#             f"predict_proba output has shape {proba_arr.shape}, "
-#             "expected at least 2 columns for binary classification."
-#         )
-#     return proba_arr[:, 1]
-
-
-# def predict_model_flaml_from_artifacts(
-#     x_test: pd.DataFrame, model_result: ModelResult
-# ) -> YPredictionsType:
-#     """
-#     Load per-fold FLAML AutoML models and preprocessors from artifact_dir,
-#     aggregate predictions, and return y_predictions for x_test.
-
-#     Classification:
-#         - Binary:
-#             - If metric is log_loss / cross_entropy → return probabilities (shape: (n_samples,)).
-#             - Else → return labels {0,1}.
-#         - Multi-class:
-#             - If metric is log_loss / cross_entropy → return proba matrix (n_samples, n_classes).
-#             - Else → return labels via argmax (decoded if possible).
-
-#     Regression:
-#         - Return mean prediction across folds.
-#     """
-#     out_dir = util.artifacts_directory_mr(model_result)
-#     state: TrainingState = joblib.load(out_dir / "flaml_state.joblib")
-
-#     test_preds_accum: list[npt.NDArray[np.float64]] = []
-
-#     is_class = state.task == "classification"
-#     n_classes = (
-#         len(state.label_encoder.classes_) if is_class and state.label_encoder is not None else 0
-#     )
-#     is_binary = is_class and n_classes == 2
-
-#     for fold_i in range(state.n_splits):
-#         fold_dir = out_dir / f"flaml_fold_{fold_i}"
-#         assert fold_dir.exists()  # programmer bug
-
-#         preproc: WholeDataPreprocessor = joblib.load(fold_dir / "preproc.joblib")
-#         aml: AutoML = joblib.load(fold_dir / "automl.joblib")
-
-#         x_te_use = preproc.transform(x_test)
-
-#         if state.task == "classification":
-#             if is_binary:
-#                 proba = _flaml_binary_scores(
-#                     aml,
-#                     x_te_use,
-#                     state.metric,
-#                     state.label_encoder,
-#                 )
-#                 test_preds_accum.append(proba)
-#             else:
-#                 proba_full = _flaml_proba_matrix(aml, x_te_use, state.label_encoder)
-#                 test_preds_accum.append(proba_full)
-#         else:
-#             preds = aml.predict(x_te_use)
-#             test_preds_accum.append(cast(npt.NDArray[np.float64], preds))
-
-#     if not test_preds_accum:
-#         raise RuntimeError("No FLAML fold artifacts found for prediction.")
-
-#     if state.task == "classification":
-#         if is_binary:
-#             all_preds = np.vstack(test_preds_accum)
-
-#             if state.metric in util.METRIC_LOGLOSS_CROSSENTROPY:
-#                 if state.calibrator is not None:
-#                     calibrated = np.vstack([state.calibrator.transform(p) for p in all_preds])
-#                 else:
-#                     calibrated = all_preds
-#                 return np.mean(calibrated, axis=0)
-
-#             assert (
-#                 state.best_threshold is not None
-#             ), "Stored threshold is missing for classification."  # programmer/library bug
-#             proba_med = np.median(all_preds, axis=0)
-#             label_idx = (proba_med >= state.best_threshold).astype(int)
-
-#             # Decode to original labels (e.g., "introvert"/"extrovert") if possible
-#             if state.label_encoder is not None:
-#                 labels = state.label_encoder.inverse_transform(label_idx)
-#                 return labels
-
-#             # Fallback: return encoded 0/1 if encoder is somehow missing
-#             return label_idx
-
-#         # Multi-class
-#         all_preds_mc = np.stack(test_preds_accum, axis=0)  # (k, n, C)
-#         proba_mean = np.mean(all_preds_mc, axis=0)
-
-#         if state.metric in util.METRIC_LOGLOSS_CROSSENTROPY:
-#             return proba_mean.astype(float)
-
-#         label_idx = np.argmax(proba_mean, axis=1)
-#         if state.label_encoder is not None:
-#             labels = state.label_encoder.inverse_transform(label_idx)
-#             return labels
-#         return label_idx.astype(int)
-
-#     return _aggregate_regression_preds(test_preds_accum)
-
-
-# def predict_model_agl_from_artifacts(
-#     x_test: pd.DataFrame, model_result: ModelResult
-# ) -> YPredictionsType:
-#     """
-#     Load per-fold AutoGluon predictors and preprocessors from artifact_dir,
-#     aggregate predictions, and return y_predictions for x_test.
-
-#     Classification:
-#         - Binary:
-#             - If metric is log_loss / cross_entropy → return probabilities (shape: (n_samples,)).
-#             - Else → return 0/1 labels.
-#         - Multi-class:
-#             - If metric is log_loss / cross_entropy → return proba matrix (n_samples, n_classes).
-#             - Else → return class labels via argmax (decoded to original labels if possible).
-
-#     Regression:
-#         - Return mean prediction across folds.
-#     """
-#     out_dir = util.artifacts_directory_mr(model_result)
-#     state: TrainingState = joblib.load(out_dir / "agl_state.joblib")
-
-#     test_preds_accum: list[npt.NDArray[np.float64]] = []
-
-#     is_class = state.task == "classification"
-#     n_classes = (
-#         len(state.label_encoder.classes_) if is_class and state.label_encoder is not None else 0
-#     )
-#     is_binary = is_class and n_classes == 2
-
-#     for fold_i in range(state.n_splits):
-#         fold_dir = out_dir / f"agl_fold_{fold_i}"
-#         assert fold_dir.exists()  # programmer bug
-
-#         preproc: WholeDataPreprocessor = joblib.load(fold_dir / "preproc.joblib")
-#         with util.suppress_stdout_stderr():
-#             predictor = TabularPredictor.load(str(fold_dir))
-
-#         x_te_use = preproc.transform(x_test)
-
-#         if state.task == "classification":
-#             proba_df = util.to_df(predictor.predict_proba(x_te_use))
-#             if is_binary:
-#                 proba = _agl_pos_proba_from_df(proba_df, state.label_encoder)
-#                 test_preds_accum.append(proba)
-#             else:
-#                 proba_full = _agl_proba_matrix_from_df(proba_df, state.label_encoder)
-#                 test_preds_accum.append(proba_full)
-#         else:
-#             preds = predictor.predict(x_te_use).to_numpy()
-#             test_preds_accum.append(preds.astype(float))
-
-#     if not test_preds_accum:
-#         raise RuntimeError("No AutoGluon fold artifacts found for prediction.")
-
-#     if state.task == "classification":
-#         if is_binary:
-#             all_preds = np.vstack(test_preds_accum)
-
-#             if state.metric in util.METRIC_LOGLOSS_CROSSENTROPY:
-#                 if state.calibrator is not None:
-#                     calibrated = np.vstack([state.calibrator.transform(p) for p in all_preds])
-#                 else:
-#                     calibrated = all_preds
-#                 return np.mean(calibrated, axis=0)
-
-#             assert (
-#                 state.best_threshold is not None
-#             ), "Stored threshold is missing for classification."  # programmer/library bug
-#             proba_med = np.median(all_preds, axis=0)
-#             label_idx = (proba_med >= state.best_threshold).astype(int)
-
-#             # Decode to original labels (e.g., "introvert"/"extrovert") if possible
-#             if state.label_encoder is not None:
-#                 labels = state.label_encoder.inverse_transform(label_idx)
-#                 return labels
-
-#             # Fallback: return encoded 0/1 if encoder is somehow missing
-#             return label_idx
-
-#         # Multi-class
-#         all_preds_mc = np.stack(test_preds_accum, axis=0)  # (k, n, C)
-#         proba_mean = np.mean(all_preds_mc, axis=0)  # (n, C)
-
-#         if state.metric in util.METRIC_LOGLOSS_CROSSENTROPY:
-#             # Return probability matrix
-#             return proba_mean.astype(float)
-
-#         # Return labels via argmax; decode to original labels if possible
-#         label_idx = np.argmax(proba_mean, axis=1)
-#         if state.label_encoder is not None:
-#             labels = state.label_encoder.inverse_transform(label_idx)
-#             return labels
-#         return label_idx.astype(int)
-
-#     # Regression
-#     return _aggregate_regression_preds(test_preds_accum)

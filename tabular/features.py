@@ -41,14 +41,11 @@ from sklearn.preprocessing import (
     OneHotEncoder,
     OrdinalEncoder,
     RobustScaler,
-    # PolynomialFeatures,
 )
 
 # Project imports
 import tabular.utilities as util
 from tabular.utilities import (
-    # TaskType,
-    # AppError,
     NumericImputation,
     ObjectImputation,
     Option,
@@ -104,13 +101,12 @@ _SyntheticFeaturesFunctionType: TypeAlias = Callable[
 
 
 class MahalanobisOutlier(BaseEstimator, TransformerMixin):
-    """Transformer that computes Mahalanobis distance and a binary outlier flag,
-    then returns the original data with those two features appended.
+    """Append Mahalanobis-distance outlier features to a DataFrame.
 
-    Captures multivariate atypicality by measuring how far each sample lies from
-    the empirical center under the covariance structure. Outputs:
-        * mahalanobis_distance: continuous distance.
-        * mahalanobis_outlier: binary flag (1 if distance exceeds chi-square-derived threshold).
+    The transformer learns the mean vector, covariance structure, and a
+    chi-square-derived cutoff from training data. It then appends two features
+    to each transformed DataFrame: ``mahalanobis_distance`` and
+    ``mahalanobis_outlier``.
     """
 
     def __init__(
@@ -121,16 +117,13 @@ class MahalanobisOutlier(BaseEstimator, TransformerMixin):
         """Initialize the transformer.
 
         Args:
+            features: Column names used for Mahalanobis-distance computation.
             quantile: Chi-square upper quantile used to set the outlier cutoff.
-            features: Optional iterable of column names to restrict which features
-                are used for Mahalanobis computation. If None, all numeric columns
-                from the fit input are inferred.
         """
         self.quantile = quantile
-        self.features = features  # None if features is None else list(features)
+        self.features = features
 
         # To be populated in fit()
-        # self._selected_features_: list[str] | None = None
         self._mean_: NDArray[np.float64] | None = None
         self._cov_inv_: NDArray[np.float64] | None = None
         self._impute_means_: NDArray[np.float64] | None = None  # training-time fill means
@@ -139,10 +132,20 @@ class MahalanobisOutlier(BaseEstimator, TransformerMixin):
     def fit(
         self, x: pd.DataFrame, y: ArrayLike | None = None  # pylint: disable=unused-argument
     ) -> "MahalanobisOutlier":
-        """Estimate mean, inverse covariance, and outlier threshold from training data.
+        """Fit the Mahalanobis-distance parameters from training data.
 
-        Missing values are imputed with column means (computed on the TRAIN data)
-        only for internal computations.
+        Missing values are imputed with training-time column means for the
+        internal covariance calculation only. The input DataFrame is not modified.
+
+        Args:
+            x: Training feature DataFrame.
+            y: Ignored target values, included for scikit-learn compatibility.
+
+        Returns:
+            The fitted transformer.
+
+        Raises:
+            RuntimeError: If no features are available for distance computation.
         """
         # Subset to selected numeric columns
         x_sel = x[self.features]
@@ -174,7 +177,20 @@ class MahalanobisOutlier(BaseEstimator, TransformerMixin):
         return self
 
     def _mahalanobis_distance(self, x_sel: pd.DataFrame) -> npt.NDArray[np.float64]:
-        """Compute Mahalanobis distance for each row in ``x_sel``."""
+        """Compute Mahalanobis distance for each row.
+
+        Args:
+            x_sel: DataFrame containing exactly the fitted feature columns, in
+                the fitted feature order.
+
+        Returns:
+            One Mahalanobis distance per input row.
+
+        Raises:
+            RuntimeError: If the transformer has not been fitted.
+            AssertionError: If the input columns do not match the fitted feature
+                order.
+        """
         if self._cov_inv_ is None or self._mean_ is None or self._impute_means_ is None:
             raise RuntimeError("Transformer must be fitted before computing Mahalanobis distance.")
 
@@ -196,19 +212,20 @@ class MahalanobisOutlier(BaseEstimator, TransformerMixin):
         return np.sqrt(np.clip(mahal_sq, a_min=0.0, a_max=None)).astype(np.float64)
 
     def transform(self, x: pd.DataFrame) -> pd.DataFrame:
-        """Apply fitted logic and return original X with appended outlier features.
+        """Append Mahalanobis-distance features to input data.
 
         Args:
-            x: Input DataFrame.
+            x: Input feature DataFrame.
 
         Returns:
-            DataFrame with original columns plus:
-                * mahalanobis_distance
-                * mahalanobis_outlier
-        """
-        # if self.features is None:
-        #     raise RuntimeError("fit must be called before transform.")
+            DataFrame containing the original columns plus
+            ``mahalanobis_distance`` and ``mahalanobis_outlier``.
 
+        Raises:
+            RuntimeError: If the transformer has not been fitted.
+            AssertionError: If the selected input columns do not match the fitted
+                feature order.
+        """
         # Compute distance on selected features
         x_sel = x[self.features]
         dist = self._mahalanobis_distance(x_sel)
@@ -232,7 +249,19 @@ class MahalanobisOutlier(BaseEstimator, TransformerMixin):
         X: pd.DataFrame,
         y: ArrayLike | None = None,
     ) -> pd.DataFrame:
-        """Fit on X and immediately transform, returning augmented DataFrame."""
+        """Fit the transformer and return the augmented training DataFrame.
+
+        Args:
+            X: Training feature DataFrame.
+            y: Ignored target values, included for scikit-learn compatibility.
+
+        Returns:
+            DataFrame containing the original columns plus Mahalanobis-distance
+            features.
+
+        Raises:
+            RuntimeError: If no features are available for distance computation.
+        """
         return self.fit(X, y).transform(X)
 
 
@@ -241,9 +270,7 @@ class _ProcessState:
     """Holds artifacts learned in process_data_fit and snapshots for leak-free apply."""
 
     # config/opts
-    # processors: ProcessorType
     feature_names_to_exclude: set[str] | None
-    # task: TaskType
     feature_pruning_threshold: int
     options: Any
 
@@ -299,52 +326,11 @@ def _add_missingness_flags(df: pd.DataFrame, bases: list[str]) -> pd.DataFrame:
 
     # Ensure *all* flags exist (even if some bases missing at apply time)
     all_flags = [f"{b}{_MISSING_SUFFIX}" for b in bases]
-    ind_df = ind_df.reindex(columns=all_flags, fill_value=0).astype("int8", copy=False)
+    ind_df = ind_df.reindex(columns=all_flags, fill_value=0).astype("int8")
 
     # Overwrite deterministically + avoid fragmentation
     df = df.drop(columns=all_flags, errors="ignore")
     return pd.concat([df, ind_df], axis=1).copy()
-
-
-def _select_skewed_numeric_candidates(
-    df: pd.DataFrame,
-    uid_column_name: str | None = None,
-) -> list[tuple[str, float, bool]]:
-    """Return the conservative top-K skewed numeric columns suitable for generic synthetics.
-
-    Returns tuples of:
-        (column_name, abs_skew, is_nonnegative)
-    """
-    numeric_cols, _ = util.column_names_by_dtype(df, exclude_constant_cols=True)
-    candidate_rows: list[tuple[str, float, bool]] = []
-
-    for col in numeric_cols:
-        if uid_column_name is not None and col == uid_column_name:
-            continue
-
-        series = df[col]
-        non_null = series.dropna()
-        if non_null.empty:
-            continue
-
-        nunique = int(non_null.nunique())
-        if nunique < _MIN_UNIQUE_FOR_SKEW_TRANSFORM:
-            continue
-        # Treat 2-or-fewer unique values as binary / near-binary and skip.
-        if nunique <= 2:
-            continue
-
-        skew_val = float(non_null.skew())  # pyright: ignore[reportArgumentType]
-        if not np.isfinite(skew_val):
-            continue
-        if abs(skew_val) < _ABS_SKEW_THRESHOLD_FOR_TRANSFORM:
-            continue
-
-        is_nonnegative = bool((non_null >= 0).all())
-        candidate_rows.append((col, abs(skew_val), is_nonnegative))
-
-    candidate_rows.sort(key=lambda item: item[1], reverse=True)
-    return candidate_rows[:_MAX_SKEW_TRANSFORM_COLS]
 
 
 def _add_selective_skew_transforms(
@@ -801,6 +787,16 @@ def _choose_default_numeric_imputation(
 
 
 def _create_onehot_pipeline(min_frequency: int, max_categories: int) -> Pipeline:
+    """Create a one-hot encoding pipeline for categorical features.
+
+    Args:
+        min_frequency: Minimum category frequency before grouping into the
+            infrequent-category bin.
+        max_categories: Maximum number of one-hot columns to emit for a feature.
+
+    Returns:
+        A scikit-learn Pipeline containing a configured OneHotEncoder.
+    """
     # Create a onehot_pipeline.
     # We could specify drop="first" to avoid collinearity.  ChatGPT says: Only drop one level when
     # you need a full-rank design matrix with an intercept (i.e. ordinary linear/logistic
@@ -838,7 +834,17 @@ def _create_onehot_pipeline(min_frequency: int, max_categories: int) -> Pipeline
 
 
 def _create_ordinal_pipeline(categories: tuple[str, ...]) -> Pipeline:
-    """xxx"""
+    """Create an ordinal-encoding pipeline for ranked categorical values.
+
+    Unknown and missing values are encoded as -1, then the encoded values are
+    robust-scaled.
+
+    Args:
+        categories: Ordered category labels from lowest to highest rank.
+
+    Returns:
+        A scikit-learn Pipeline containing an OrdinalEncoder and RobustScaler.
+    """
     # Create an ordinal_pipeline.  Unknown values and missing values will be encoded as -1 because
     # you have unknown_value=-1
     # a) If categories = ["Low", "Medium", "High"], and you have "__missing__", then the
@@ -968,6 +974,12 @@ def _encode_and_scale(
 
 
 def _print_fit(df: pd.DataFrame, message: str) -> None:
+    """Print the current feature count during fit-time preprocessing.
+
+    Args:
+        df: DataFrame whose column count should be reported.
+        message: Description of the preprocessing stage.
+    """
     util.print_local(
         f"#################################################### {message}: {df.shape[1]}"
     )
@@ -978,7 +990,24 @@ def _impute(
     x_test: pd.DataFrame,
     **options: Any,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """xxx"""
+    """Impute missing values in train and test data using train-fitted rules.
+
+    Boolean columns are converted to integer 0/1 values, infinities are clipped
+    to finite bounds, and numeric/object columns are imputed according to
+    explicit processor settings or conservative defaults.
+
+    Args:
+        x_train: Training feature DataFrame used to fit imputers.
+        x_test: Feature DataFrame to transform with the fitted imputers.
+        **options: Runtime options, including optional processor settings.
+
+    Returns:
+        A tuple of ``(x_train_imputed, x_test_imputed)``.
+
+    Raises:
+        AssertionError: If missing-like values remain after imputation.
+        ValueError: If an imputation option is invalid.
+    """
     if x_test is x_train:
         x_test = x_train.copy()
 
@@ -1057,7 +1086,22 @@ def _impute_numeric(
     column_name: str,
     fill_value: NumericImputation | float | int | None,
 ) -> Pipeline:
-    """xxx"""
+    """Create an imputation pipeline for a numeric column.
+
+    Args:
+        x_train: Training feature DataFrame.
+        x_test: Test or validation feature DataFrame.
+        column_name: Numeric column to impute.
+        fill_value: Numeric imputation strategy or explicit numeric fill value.
+
+    Returns:
+        A scikit-learn Pipeline containing the selected imputer.
+
+    Raises:
+        AssertionError: If no fill value is provided and the column contains
+            missing-like values.
+        ValueError: If ``fill_value`` is an unknown NumericImputation value.
+    """
     if isinstance(fill_value, NumericImputation):
         if fill_value == NumericImputation.ITERATIVE:
             # Note that IterativeImputer() will use the median() if it cannot find a strong enough
@@ -1095,7 +1139,22 @@ def _impute_object(
     column_name: str,
     fill_value: ObjectImputation | str | None,
 ) -> Pipeline:
-    """xxx"""
+    """Create an imputation pipeline for an object/string column.
+
+    Args:
+        x_train: Training feature DataFrame.
+        x_test: Test or validation feature DataFrame.
+        column_name: Object/string column to impute.
+        fill_value: Object imputation strategy or explicit string fill value.
+
+    Returns:
+        A scikit-learn Pipeline containing the selected imputer.
+
+    Raises:
+        AssertionError: If no fill value is provided and the column contains
+            missing-like values.
+        ValueError: If ``fill_value`` is an unknown ObjectImputation value.
+    """
     if isinstance(fill_value, ObjectImputation):
         if fill_value == ObjectImputation.MISSING:
             imputer = SimpleImputer(strategy="constant", fill_value=util.STRING_MISSING)
@@ -1118,9 +1177,23 @@ def _impute_object(
 
 
 def process_data_apply(x: pd.DataFrame, state: _ProcessState) -> pd.DataFrame:
-    """
-    Apply the previously learned mapping to new data x (val/test) without refitting.
-    Mirrors the step order from `process_data_fit`.
+    """Apply fitted preprocessing state to validation or test data.
+
+    Replays the exact transformations learned by ``process_data_fit`` without
+    refitting, then aligns the output columns to the final training schema.
+
+    Args:
+        x: Raw validation or test feature DataFrame.
+        state: Fitted preprocessing state returned by ``process_data_fit``.
+
+    Returns:
+        Processed feature DataFrame aligned to the fitted training schema.
+
+    Raises:
+        ValueError: If required replay columns are missing for synthetic
+            transforms or UID-derived date features.
+        RuntimeError: If a fitted transformer is used before fitting.
+        AssertionError: If a defensive schema or missing-value invariant fails.
     """
     z = x.copy()
 
@@ -1226,9 +1299,30 @@ def process_data_fit(
     feature_pruning_threshold: int,
     **options: Any,
 ) -> tuple[pd.DataFrame, _ProcessState]:
-    """
-    Learn everything from x_train/y_train and return (x_train_processed, state).
-    Ensures we can replay identical transforms on VAL/TEST (no refitting).
+    """Fit preprocessing transformations and process training data.
+
+    Learns all train-only preprocessing artifacts, including missingness flags,
+    imputers, optional synthetic features, outlier features, encoders, scalers,
+    and pruning decisions. The returned state can be replayed on validation or
+    test data without leakage.
+
+    Args:
+        x_train: Raw training feature DataFrame.
+        y_train: Training target values.
+        feature_pruning_threshold: Index into the configured pruning threshold
+            presets.
+        **options: Runtime options controlling preprocessing and feature
+            generation.
+
+    Returns:
+        A tuple containing the processed training DataFrame and fitted
+        preprocessing state.
+
+    Raises:
+        ValueError: If processor keys do not match generated columns or a replay
+            feature cannot be constructed.
+        RuntimeError: If Mahalanobis outlier fitting has no usable features.
+        AssertionError: If a defensive schema or missing-value invariant fails.
     """
     processors: ProcessorType = options.get(Option.PROCESSORS, {})
     synthetic_features_function = options.get(Option.CUSTOM_SYNTHETICS_FUNCTION)
@@ -1399,7 +1493,6 @@ def process_data_fit(
         feature_names_to_exclude=feature_names_to_exclude,
         feature_pruning_threshold=feature_pruning_threshold,
         missingness_cols=missingness_cols,
-        # task=task,
         options=options,
         outlier=outlier,
         pruned_column_names=pruned_column_names,
@@ -1522,3 +1615,44 @@ def _prune_features(
 
     pruned_column_names = sorted([c for c in original_column_names if c not in x_train.columns])
     return x_train, pruned_column_names
+
+
+def _select_skewed_numeric_candidates(
+    df: pd.DataFrame,
+    uid_column_name: str | None = None,
+) -> list[tuple[str, float, bool]]:
+    """Return the conservative top-K skewed numeric columns suitable for generic synthetics.
+
+    Returns tuples of:
+        (column_name, abs_skew, is_nonnegative)
+    """
+    numeric_cols, _ = util.column_names_by_dtype(df, exclude_constant_cols=True)
+    candidate_rows: list[tuple[str, float, bool]] = []
+
+    for col in numeric_cols:
+        if uid_column_name is not None and col == uid_column_name:
+            continue
+
+        series = df[col]
+        non_null = series.dropna()
+        if non_null.empty:
+            continue
+
+        nunique = int(non_null.nunique())
+        if nunique < _MIN_UNIQUE_FOR_SKEW_TRANSFORM:
+            continue
+        # Treat 2-or-fewer unique values as binary / near-binary and skip.
+        if nunique <= 2:
+            continue
+
+        skew_val = float(non_null.skew())  # pyright: ignore[reportArgumentType]
+        if not np.isfinite(skew_val):
+            continue
+        if abs(skew_val) < _ABS_SKEW_THRESHOLD_FOR_TRANSFORM:
+            continue
+
+        is_nonnegative = bool((non_null >= 0).all())
+        candidate_rows.append((col, abs(skew_val), is_nonnegative))
+
+    candidate_rows.sort(key=lambda item: item[1], reverse=True)
+    return candidate_rows[:_MAX_SKEW_TRANSFORM_COLS]

@@ -74,8 +74,10 @@
 
 ################################################### To Run Predictly
 # To build and deploy to Modal  (DO need to be in .venv):
+        # Activate the venv, your prompt should change to start with (.venv)
         ~/MyStuff/Projects/predictly
-        source .venv/bin/activate  # Activate the venv, your prompt should change to start with (.venv)
+        source .venv/bin/activate
+        # Then deploy
         modal deploy modal_predictly.py
         modal deploy modal_server.py
 # To start local dev server (do NOT need to be in .venv)
