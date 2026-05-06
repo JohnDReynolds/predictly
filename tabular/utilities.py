@@ -54,7 +54,7 @@ import psutil
 # Constants General
 DEFAULT_SPEED = 0  # 0=fast, 1=medium, 2=slow
 DO_DEBUG = False
-DO_MODAL = True  # Set to True before building Modal
+DO_MODAL = False  # Set to True before building Modal
 ENCODING = "utf-8"
 _DEVNULL: TextIO = open(os.devnull, "w", encoding=ENCODING)  # intentionally never closed
 FLOAT_MAX = np.sqrt(np.float32(np.finfo(np.float32).max)) - 2  # Sqrt and a tolerance of 2.

@@ -81,7 +81,8 @@
         modal deploy modal_predictly.py
         modal deploy modal_server.py
 # To start local dev server (do NOT need to be in .venv)
-        ~/MyStuff/Projects/predictly/ui-frontend % npm run dev
+        ~/MyStuff/Projects/predictly/ui-frontend
+        npm run dev
 # To update Netlify:
         Just push UI tsx stuff to github
 

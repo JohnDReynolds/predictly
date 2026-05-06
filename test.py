@@ -1,5 +1,9 @@
-"""
-tester.py
+"""Regression test harness for tabular train-and-predict outputs.
+
+This module runs selected tabular datasets through ``predict.train_and_predict()``,
+compares generated result dictionaries with stored JSON baselines, and records
+differences that exceed configured per-dataset tolerances. It also verifies
+expected ``AppError`` cases for intentionally invalid inputs.
 """
 
 # Errors to ignore
@@ -248,21 +252,18 @@ def _compare_dicts(
     ignores: set[str],
     pct_diff_tolerances: dict[str, float],
 ) -> list[str]:
-    """Compare two dictionaries with strict type and numeric rules.
+    """Compare two dictionaries using strict recursive comparison rules.
 
-    Rules:
-      1) Keys must match exactly (order irrelevant).
-      2) Non-(str|numeric) values are skipped.
-      3) String values must match exactly.
-      4) String vs numeric mismatches are errors.
-      5) Numeric values:
-         - int vs float type differences are errors.
-         - If key in `ranges`, both values must be within [lo, hi].
-         - Otherwise values must match within 1e-12.
+    Args:
+        parent: Name of the current parent path used in error messages.
+        dict1: Expected dictionary.
+        dict2: Actual dictionary.
+        ignores: Keys whose values should be ignored during comparison.
+        pct_diff_tolerances: Per-key numeric percentage-difference tolerances.
 
     Returns:
-      None if dictionaries match under the rules.
-      List[str] of error messages otherwise.
+        A list of error messages. The list is empty when the dictionaries match
+        under the configured comparison rules.
     """
     errors: list[str] = []
 
@@ -350,7 +351,20 @@ def _compare_lists(
     anys: dict[str, Any],
     pct_diff_tolerances: dict[str, float] | None,
 ) -> list[str]:
-    """Compare two lists under the same strict rules as dict values."""
+    """Compare two lists using the same recursive rules as dictionary values.
+
+    Args:
+        v1: Expected list.
+        v2: Actual list.
+        key: Current key or path used in error messages.
+        anys: Keys whose list contents should be ignored during comparison.
+        pct_diff_tolerances: Optional per-key numeric percentage-difference
+            tolerances.
+
+    Returns:
+        A list of error messages. The list is empty when the lists match under the
+        configured comparison rules.
+    """
     errors: list[str] = []
 
     if len(v1) != len(v2):
@@ -419,26 +433,25 @@ def _compare_lists(
 def _compare_pct_diff(
     num1: float | int, num2: float | int, pct_diff_tolerance: float
 ) -> float | None:
-    """
-    Compare two numeric values by absolute percentage difference.
+    """Compare two numeric values by absolute percentage difference.
 
-    The absolute percentage difference is defined as:
-        abs(num1 - num2) / min(abs(num1), abs(num2))
+    The absolute percentage difference is calculated as ``abs(num1 - num2) /
+    min(abs(num1), abs(num2))``. Identical zero values are treated as matching.
+    If exactly one value is zero, the difference is reported as infinity.
 
     Args:
         num1: First numeric value.
         num2: Second numeric value.
-        pct_diff_tolerance: Maximum allowed percentage difference
-            (expressed as a decimal, not multiplied by 100).
+        pct_diff_tolerance: Maximum allowed percentage difference, expressed as a
+            decimal rather than a percentage.
 
     Returns:
-        None if the absolute percentage difference is within tolerance.
-        Otherwise, the absolute percentage difference rounded *up*
-        to 4 decimal places (not multiplied by 100).
+        ``None`` if the absolute percentage difference is within tolerance.
+        Otherwise, the absolute percentage difference rounded up to four decimal
+        places.
 
     Raises:
-        AssertionError: If tolerance is negative.
-        ZeroDivisionError: If both numbers are zero.
+        AssertionError: If ``pct_diff_tolerance`` is negative.
     """
     assert pct_diff_tolerance >= 0, "pct_diff_tolerance must be non-negative"
 
@@ -450,7 +463,6 @@ def _compare_pct_diff(
         if abs1 == 0 and abs2 == 0:
             return None  # identical zeros → no difference
         return float("inf")
-        # raise ZeroDivisionError("Cannot compute percentage difference when one value is zero.")
 
     abs_pct_diff = abs(num1 - num2) / denom
 
@@ -471,13 +483,33 @@ def _is_string(v: Any) -> bool:
 
 
 def _read_dict_from_json(path: Path) -> dict[str, Any]:
-    """Read a dictionary from a JSON file."""
+    """Read a JSON file into a dictionary.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        Dictionary loaded from ``path``.
+
+    Raises:
+        OSError: If the file cannot be opened or read.
+        json.JSONDecodeError: If the file does not contain valid JSON.
+    """
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def _write_dict_to_json(path: Path, data: dict[str, Any]) -> None:
-    """Write a dictionary to disk as JSON."""
+    """Write a dictionary to disk as formatted JSON.
+
+    Args:
+        path: Output JSON file path.
+        data: Dictionary to serialize.
+
+    Raises:
+        OSError: If the file cannot be opened or written.
+        TypeError: If ``data`` contains values that cannot be serialized as JSON.
+    """
     with path.open("w", encoding="utf-8") as f:
         json.dump(data, f, indent=4, sort_keys=True, ensure_ascii=False)
 
